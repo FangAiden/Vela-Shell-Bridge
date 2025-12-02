@@ -1,6 +1,6 @@
 ## 项目介绍
 
-watch-lua-sudo 是一个为智能手表设计的 QuickApp → Lua → Shell 执行桥接层。
+Vela-Shell-Bridge 是一个为小米VelaOS穿戴设备设计的 QuickApp → Lua → Shell 执行桥接层。
 它允许普通快应用，在严格的权限策略下，通过 Lua 守护进程执行系统级 Shell 命令。
 
 - 文件 IPC 作为通信通道
