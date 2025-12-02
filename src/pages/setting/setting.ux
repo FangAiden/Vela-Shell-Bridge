@@ -1,0 +1,259 @@
+<import name="time-bar" src="../../components/timeBar"></import>
+
+<template>
+  <div class="root">
+    <!-- 顶部时间条：不参与动画 -->
+    <time-bar />
+
+    <!-- 动画主体：安全区 -->
+    <div class="safe-area page-anim {{ animClass }}">
+      <scroll class="list" scroll-y="true" bounces="true">
+
+        <!-- 卡片：危险命令确认 -->
+        <div class="card" onclick="onToggleConfirmDanger">
+          <div class="card-texts">
+            <text class="card-title">确认危险命令</text>
+            <text class="card-sub">执行 rm 等命令前提示确认</text>
+          </div>
+          <div class="switch {{ confirmDanger ? 'switch-on' : 'switch-off' }}">
+            <div class="switch-knob"></div>
+          </div>
+        </div>
+
+        <!-- 卡片：记录命令历史 -->
+        <div class="card" onclick="onToggleSaveHistory">
+          <div class="card-texts">
+            <text class="card-title">记录命令历史</text>
+            <text class="card-sub">将最近执行命令保存到日志</text>
+          </div>
+          <div class="switch {{ saveHistory ? 'switch-on' : 'switch-off' }}">
+            <div class="switch-knob"></div>
+          </div>
+        </div>
+
+        <!-- 卡片：显示调试输出 -->
+        <div class="card" onclick="onToggleShowDebug">
+          <div class="card-texts">
+            <text class="card-title">显示调试输出</text>
+            <text class="card-sub">在界面上显示 Lua / IPC 调试信息</text>
+          </div>
+          <div class="switch {{ showDebug ? 'switch-on' : 'switch-off' }}">
+            <div class="switch-knob"></div>
+          </div>
+        </div>
+
+        <!-- 危险操作按钮 -->
+        <div class="danger-btn" onclick="onClickReset">
+          <text class="danger-text">重置规则与白名单</text>
+        </div>
+
+      </scroll>
+    </div>
+  </div>
+</template>
+
+<script>
+import prompt from "@system.prompt";
+import router from "@system.router";
+
+export default {
+  data: {
+    confirmDanger: true,
+    saveHistory: true,
+    showDebug: false,
+
+    // 页面动画状态
+    animClass: "",
+    isLeaving: false,
+  },
+
+  onShow() {
+    this.$broadcast("page-on-show", {});
+
+    // 进入动画
+    this.isLeaving = false;
+    this.animClass = "";
+    setTimeout(() => {
+      this.animClass = "page-enter";
+    }, 0);
+  },
+
+  // 返回时加退出动画
+  onBackPress() {
+    if (this.isLeaving) {
+      return true;
+    }
+
+    this.isLeaving = true;
+    this.animClass = "page-leave";
+
+    setTimeout(() => {
+      router.back();
+    }, 180);
+
+    return true;
+  },
+
+  onToggleConfirmDanger() {
+    this.confirmDanger = !this.confirmDanger;
+    console.log("危险命令确认:", this.confirmDanger);
+    // TODO: 在这里写入配置文件 / 发 IPC
+  },
+
+  onToggleSaveHistory() {
+    this.saveHistory = !this.saveHistory;
+    console.log("记录命令历史:", this.saveHistory);
+  },
+
+  onToggleShowDebug() {
+    this.showDebug = !this.showDebug;
+    console.log("显示调试信息:", this.showDebug);
+  },
+
+  onClickReset() {
+    prompt.showToast({
+      message: "重置规则和白名单（未实现）",
+      duration: 800,
+    });
+  },
+};
+</script>
+
+<style>
+/* —— 布局 —— */
+.root {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  background-color: #000000;
+}
+
+/* safe-area：圆表内切正方形 + 动画主体 */
+.safe-area {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 列表区域：略大一点，卡片更饱满 */
+.list {
+  width: 80%;
+  height: 78%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+/* —— 设置卡片 —— */
+.card {
+  width: 100%;
+  background-color: #191919;
+  border-radius: 18px;
+  padding: 10px 14px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.card-texts {
+  flex-direction: column;
+  width: 70%;
+}
+
+.card-title {
+  color: #f2f2f2;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.card-sub {
+  color: #888888;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* —— 自定义开关 —— */
+.switch {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  padding: 2px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  background-color: #444444;
+}
+
+/* 开关中的小圆点 */
+.switch-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background-color: #ffffff;
+}
+
+/* 开状态：背景变绿，小圆点靠右 */
+.switch-on {
+  background-color: #00d36f;
+  justify-content: flex-end;
+}
+
+/* 关状态：保持灰色，圆点在左（默认 switch 样式即可） */
+.switch-off {
+  background-color: #444444;
+  justify-content: flex-start;
+}
+
+/* —— 危险按钮 —— */
+.danger-btn {
+  margin-top: 14px;
+  width: 100%;
+  background-color: #e44545;
+  border-radius: 20px;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.danger-text {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+/* —— 页面动画 —— */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+.page-enter {
+  animation-name: pageIn;
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+}
+
+.page-leave {
+  animation-name: pageOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+}
+
+@keyframes pageIn {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pageOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.8); }
+}
+</style>

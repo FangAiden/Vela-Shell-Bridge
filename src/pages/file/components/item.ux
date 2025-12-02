@@ -1,0 +1,88 @@
+<template>
+	<div class="root" onclick="onButtonClick" onlongpress="onLongPress">
+		<div class="image-container">
+			<image class="image" src="{{ image }}" />
+		</div>
+		<div class="text-content">
+			<text class="title">{{ title }}</text>
+			<text class="subtitle">{{ type }} · {{ info }}</text>
+		</div>
+		<image src="/resources/image/right_arrow.png" style="width: 36px; height: 36px;" />
+	</div>
+</template>
+<script>
+export default {
+	props: ["title", "image", "type", "info", "index"],
+	data() {
+		return {
+			title: this.title,
+			image: this.image,
+			type: this.type,
+			info: this.info,
+            index: this.index,
+		};
+	},
+	onButtonClick(e) {
+		this.$emit("buttonClick", {
+			index: this.index,
+            title:this.title,
+		});
+	},
+    onLongPress(e) {
+		this.$emit("longPress", {
+			index: this.index,
+            title:this.title,
+		});
+	},
+};
+</script>
+
+<style>
+.root {
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	width: 85%;
+	margin-bottom: 10px;
+    padding: 10px;
+    background-color: #0e0e13;
+    border-radius: 25px;
+}
+
+.image-container {
+	width: 70px;
+	height: 70px;
+	justify-content: center;
+	align-items: center;
+}
+
+.image {
+	width: 55px;
+	height: 55px;
+}
+
+.text-content {
+	width: 70%;
+	flex-direction: column;
+	justify-content: center;
+	margin-right: 10%;
+}
+
+.title {
+	font-size: 28px;
+	font-weight: bold;
+	color: #f1f1f1;
+}
+
+.subtitle {
+	font-size: 18px;
+	color: #929292;
+}
+
+.button {
+	height: 45px;
+	width: 80px;
+    font-size: 24px;
+    color: #fff;
+}
+</style>

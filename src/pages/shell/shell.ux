@@ -1,0 +1,164 @@
+<import name="time-bar" src="../../components/timeBar"></import>
+
+<template>
+	<div class="root">
+		<time-bar />
+		<!-- 正方形安全区包裹终端内容 -->
+		<div class="square-wrapper {{ animClass }}">
+			<scroll class="box" scroll-y="true" bounces="true">
+				<div class="shell-content" for="{{ textList }}">
+					<text class="shell-text">{{ $item }}</text>
+				</div>
+			</scroll>
+		</div>
+	</div>
+</template>
+
+<script>
+import prompt from "@system.prompt";
+import router from "@system.router";
+
+export default {
+	data: {
+		textList: [
+			"> ls",
+			"/data :",
+			"  quickapp/",
+			"  logs/",
+			"  a.txt",
+			"  b.txt",
+			"  c.txt",
+			"  d.txt",
+			"  e.txt",
+		],
+		animClass: "", // 控制页面入场动画的 class
+	},
+	onShow() {
+		this.$broadcast("page-on-show", {});
+
+		// 触发一次入场动画：
+		// 先清掉 class，再在下一帧加上，保证每次 onShow 都会重新播放
+		this.animClass = "";
+		setTimeout(() => {
+			this.animClass = "page-enter";
+		}, 0);
+	},
+	onBackPress() {
+		// 如果已经在播放退出动画，就不再重复触发
+		if (this.isLeaving) {
+			return true; // 告诉系统：我自己处理
+		}
+		this.isLeaving = true;
+
+		// 切换为退出动画 class
+		this.animClass = "page-leave";
+
+		// 动画结束后再真正返回上一页
+		setTimeout(() => {
+			router.back();
+		}, 180); // 跟下面 CSS 里的 animation-duration 保持一致
+
+		// 返回 true：拦截系统默认返回行为
+		return true;
+	},
+};
+</script>
+
+<style>
+/* 整个页面：上方是时间，下方是内容区域 */
+.root {
+	width: 100%;
+	height: 100%;
+	flex-direction: column;
+	justify-content: flex-start;
+	align-items: stretch;
+	background-color: #000000;
+}
+
+/* 正方形安全区：占据 time-bar 下面的空间，并把内部内容居中成一个正方形 */
+.square-wrapper {
+	flex: 1;
+	width: 100%;
+	flex-direction: column;
+	justify-content: center;  /* 纵向居中 */
+	align-items: center;      /* 横向居中 */
+	opacity: 0;
+	transform: scale(0.80);
+	transform-origin: center center;  /* 从中心缩放 */
+}
+
+/* 终端区域：在 square-wrapper 中形成“最大内切正方形” */
+.box {
+	/* 边长约为屏幕宽度的 70% ≈ 1/√2，对应圆的最大内切正方形 */
+	width: 70%;
+	height: 70%;
+
+	flex-direction: column;
+	justify-content: flex-start;
+	align-items: flex-start;
+
+	/* 内部留一点边距，让文字不要贴边 */
+	padding: 6px;
+}
+
+/* 每一行终端输出 */
+.shell-content {
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	min-height: 20px;
+	margin-bottom: 4px;
+}
+
+/* 终端风格文字：左对齐、绿色 */
+.shell-text {
+	color: #7cff7c;
+	font-size: 14px;
+	text-align: left;
+	/* 如果环境支持，可以再加这行：
+	   font-family: monospace;
+	*/
+}
+
+/* ====== 入场动画相关样式 ====== */
+
+/* 添加动画 class 后，从当前小状态放大到正常 */
+.page-enter {
+	animation-name: centerScaleIn;
+	animation-duration: 220ms;
+	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+	animation-iteration-count: 1;
+}
+
+/* 关键帧：起点和 page-body 一致，就不会“跳一下” */
+@keyframes centerScaleIn {
+	0% {
+		opacity: 0;
+		transform: scale(0.80);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1.00);
+	}
+}
+
+/* 退出动画 class */
+.page-leave {
+	animation-name: centerScaleOut;
+	animation-duration: 180ms;
+	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+	animation-iteration-count: 1;
+	transform-origin: center center;
+}
+
+@keyframes centerScaleOut {
+	0% {
+		opacity: 1;
+		transform: scale(1.0);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(0.80);
+	}
+}
+</style>

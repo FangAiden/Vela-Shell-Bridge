@@ -1,0 +1,233 @@
+<import name="time-bar" src="../../components/timeBar"></import>
+
+<template>
+  <div class="root">
+    <!-- 顶部时间条（不动画） -->
+    <time-bar />
+
+    <!-- ⭐ 进入/退出动画主体：safe-area -->
+    <div class="safe-area page-anim {{ animClass }}">
+      <scroll class="log-list" scroll-y="true" bounces="true">
+
+        <!-- 单条日志 -->
+        <div class="log-item" for="{{ logs }}">
+          <div class="log-left">
+            <div class="log-header">
+              <div
+                class="log-level-dot"
+                style="background-color: {{ $item.levelColor }}"
+              ></div>
+              <text class="log-time">{{ $item.time }}</text>
+              <text class="log-tag">{{ $item.tag }}</text>
+            </div>
+
+            <text class="log-message" lines="2">{{ $item.message }}</text>
+          </div>
+        </div>
+
+      </scroll>
+    </div>
+  </div>
+</template>
+
+<script>
+import prompt from "@system.prompt";
+import router from "@system.router";
+
+export default {
+  data: {
+    logs: [
+      {
+        time: "23:18",
+        level: "INFO",
+        levelColor: "#7cff7c",
+        tag: "[IPC]",
+        message: "AppB exec 'ls' 成功，exit=0",
+      },
+      {
+        time: "23:17",
+        level: "WARN",
+        levelColor: "#ffd95e",
+        tag: "[POLICY]",
+        message: "AppC 请求执行危险命令 'rm -rf /data/logs'",
+      },
+      {
+        time: "23:16",
+        level: "ERROR",
+        levelColor: "#ff6666",
+        tag: "[EXEC]",
+        message: "shell 执行失败：permission denied",
+      },
+      {
+        time: "23:15",
+        level: "INFO",
+        levelColor: "#7cff7c",
+        tag: "[SU-DAEMON]",
+        message: "守护进程启动，加载策略和白名单完成",
+      },
+      {
+        time: "23:14",
+        level: "DEBUG",
+        levelColor: "#9999ff",
+        tag: "[SCAN]",
+        message: "扫描 quickapp 目录，共发现 6 个应用",
+      },
+    ],
+
+    /* ⭐ 动画状态 */
+    animClass: "",
+    isLeaving: false,
+  },
+
+  onShow() {
+    this.$broadcast("page-on-show", {});
+
+    // 页面进入动画
+    this.isLeaving = false;
+    this.animClass = "";
+    setTimeout(() => {
+      this.animClass = "page-enter";
+    }, 0);
+  },
+
+  // 返回动画
+  onBackPress() {
+    if (this.isLeaving) return true;
+
+    this.isLeaving = true;
+    this.animClass = "page-leave";
+
+    setTimeout(() => {
+      router.back();
+    }, 180);
+
+    return true;
+  },
+
+  methods: {
+    async refreshLogs() {
+      try {
+        // TODO: IPC 获取日志
+      } catch (e) {
+        prompt.showToast({
+          message: "刷新日志失败",
+          duration: 800,
+        });
+      }
+    },
+  },
+};
+</script>
+
+<style>
+/* —— 布局 —— */
+.root {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+ 	align-items: stretch;
+  background-color: #000;
+}
+
+/* safe-area：圆表内切区域 + 动画主体 */
+.safe-area {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  justify-content: center;
+ 	align-items: center;
+}
+
+/* 日志列表在内切正方形中 */
+.log-list {
+  width: 70%;
+ 	height: 70%;
+  flex-direction: column;
+  justify-content: flex-start;
+ 	align-items: stretch;
+}
+
+/* —— 单条日志 —— */
+.log-item {
+  width: 100%;
+  flex-direction: row;
+ 	align-items: flex-start;
+  justify-content: flex-start;
+  padding: 4px 0;
+}
+
+.log-left {
+  flex-direction: column;
+ 	align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.log-header {
+  flex-direction: row;
+ 	align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 2px;
+}
+
+.log-level-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  margin-right: 4px;
+}
+
+.log-time {
+  color: #bbbbbb;
+  font-size: 10px;
+}
+
+.log-tag {
+  color: #888888;
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.log-message {
+  color: #7cff7c;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+}
+
+/* —— 页面动画体系 —— */
+
+/* 初始状态：淡出 + 缩小 */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+/* 进入动画 */
+.page-enter {
+  animation-name: pageIn;
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+}
+
+/* 退出动画 */
+.page-leave {
+  animation-name: pageOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+}
+
+@keyframes pageIn {
+  0% { opacity: 0; transform: scale(0.8); }
+ 100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pageOut {
+ 0% { opacity: 1; transform: scale(1); }
+ 100% { opacity: 0; transform: scale(0.8); }
+}
+</style>

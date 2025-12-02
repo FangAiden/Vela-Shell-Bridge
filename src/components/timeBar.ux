@@ -1,0 +1,83 @@
+<template>
+	<div class="root">
+		<text class="time">{{ time }}</text>
+	</div>
+</template>
+
+<script>
+export default {
+	props: ["showFlag"],
+	data: {
+		time: "",
+	},
+
+	onInit() {
+		// 初始化时先对齐一次当前时间
+		this.updateTime();
+		// 再根据系统时间安排下一次对齐
+		this.scheduleNextTick();
+
+		this.$on('page-on-show', this.handleParentShow);
+	},
+
+	onDestroy() {
+		if (this._minuteTimer) {
+			clearTimeout(this._minuteTimer);
+		}
+
+		this.$off('page-on-show', this.handleParentShow);
+	},
+
+	handleParentShow() {
+		// 初始化时先对齐一次当前时间
+		this.updateTime();
+		// 再根据系统时间安排下一次对齐
+		this.scheduleNextTick();
+	},
+
+	// 对齐到“真实世界”的分钟刻度：每次都根据当前系统时间重新计算下一次触发时间
+	scheduleNextTick() {
+		const now = new Date();
+
+		// 当前这一分钟已经过去的毫秒
+		const passedMs = now.getSeconds() * 1000 + now.getMilliseconds();
+		// 距离下一分钟还剩多少毫秒
+		let delay = 60 * 1000 - passedMs;
+
+		// 防御：极端情况下（比如时间刚好跳变）避免出现负数或异常
+		if (delay <= 0 || delay > 60 * 1000) {
+			delay = 60 * 1000;
+		}
+
+		this._minuteTimer = setTimeout(() => {
+			// 到达下一分钟整点：先更新显示
+			this.updateTime();
+			// 然后再根据“那一刻”的系统时间安排下一次
+			this.scheduleNextTick();
+		}, delay);
+	},
+
+	updateTime() {
+		const now = new Date();
+		const hh = String(now.getHours()).padStart(2, "0");
+		const mm = String(now.getMinutes()).padStart(2, "0");
+		this.time = `${hh}:${mm}`;
+	},
+};
+</script>
+
+<style>
+.root {
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	width: 100%;
+	background-color: black;
+}
+
+.time {
+	margin-top: 14px;
+	font-weight: bold;
+	color: #f1f1f1;
+}
+</style>

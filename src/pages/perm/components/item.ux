@@ -1,0 +1,84 @@
+<template>
+	<div class="root" onclick="handleClick">
+		<div class="image-container">
+			<image class="image" src="{{ image }}" />
+		</div>
+		<div class="text-content">
+			<text class="title">{{ title }}</text>
+			<text class="subtitle">请求 {{ count }} 次 · 最近 {{ time }}</text>
+		</div>
+		<switch
+			checked="{{ switchValue }}"
+			class="switch"
+			@change="onSwitchChange"
+		></switch>
+	</div>
+</template>
+<script>
+export default {
+	props: ["title", "image", "count", "time", "index"],
+	data() {
+		return {
+			title: this.title,
+			image: this.image,
+			count: this.count,
+			time: this.time,
+            index: this.index,
+		};
+	},
+	onSwitchChange(e) {
+		this.$emit("switchChange", {
+			index: this.index,
+            switchValue:e.checked,
+		});
+	},
+};
+</script>
+
+<style>
+.root {
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	width: 80%;
+	margin-bottom: 10px;
+}
+
+.image-container {
+	width: 70px;
+	height: 70px;
+	background-color: #1c2027;
+	border-radius: 50%;
+	justify-content: center;
+	align-items: center;
+}
+
+.image {
+	width: 55px;
+	height: 55px;
+}
+
+.text-content {
+	width: 60%;
+	flex-direction: column;
+	justify-content: center;
+	margin-left: 15%;
+	margin-right: 15%;
+}
+
+.title {
+	font-size: 28px;
+	font-weight: bold;
+	color: #f1f1f1;
+}
+
+.subtitle {
+	font-size: 18px;
+	color: #929292;
+}
+
+.switch {
+	height: 37px;
+	width: 67px;
+}
+</style>

@@ -1,0 +1,303 @@
+<import name="icon-text" src="../../components/iconText"></import>
+<import name="time-bar" src="../../components/timeBar"></import>
+
+<template>
+	<div class="root">
+		<stack class="stack">
+			<!-- ⭐ 动画容器：包住背景和功能卡片，time-bar 不在里面 -->
+			<div class="page-body {{ animClass }}">
+				<image
+					class="background bg-layer"
+					for="{{ bgList }}"
+					tid="id"
+					src="{{ $item.src }}"
+					style="opacity: {{ bgOpacity[$idx] }}"
+				/>
+
+				<scroll
+					id="funcScroll"
+					class="box"
+					scroll-x="true"
+					bounces="true"
+					onscroll="onScroll"
+					style="scroll-snap-type: x mandatory"
+				>
+					<div
+						for="{{ cards }}"
+						tid="id"
+						style="scroll-snap-align: center"
+						onclick="onClickCard($item.id)"
+					>
+						<icon-text
+							title="{{ $item.title }}"
+							subtitle="{{ $item.subtitle }}"
+							image="{{ $item.image }}"
+						/>
+					</div>
+				</scroll>
+			</div>
+
+			<!-- ⭐ time-bar 保持原来位置，不参与缩放动画 -->
+			<time-bar />
+		</stack>
+	</div>
+</template>
+
+<script>
+import router from "@system.router";
+import suExec from "../su-ipc";
+import prompt from "@system.prompt";
+
+export default {
+	data: {
+		bgList: [
+			{ id: "blue", src: "/resources/image/glow/blue.png" },
+			{ id: "red", src: "/resources/image/glow/red.png" },
+			{ id: "green", src: "/resources/image/glow/green.png" },
+			{ id: "orange", src: "/resources/image/glow/orange.png" },
+			{ id: "cyan", src: "/resources/image/glow/cyan.png" },
+			{ id: "purple", src: "/resources/image/glow/purple.png" },
+		],
+
+		cards: [
+			{
+				id: "perm",
+				title: "授权管理",
+				subtitle: "管理应用执行权限",
+				image: "/resources/image/perm.png",
+			},
+			{
+				id: "file",
+				title: "文件管理",
+				subtitle: "管理系统文件",
+				image: "/resources/image/file_manager.png",
+			},
+			{
+				id: "shell",
+				title: "终端",
+				subtitle: "执行Shell命令",
+				image: "/resources/image/shell.png",
+			},
+			{
+				id: "setting",
+				title: "设置",
+				subtitle: "应用设置",
+				image: "/resources/image/setting.png",
+			},
+			{
+				id: "log",
+				title: "日志",
+				subtitle: "查看应用日志",
+				image: "/resources/image/log.png",
+			},
+			{
+				id: "about",
+				title: "关于设备",
+				subtitle: "查看设备信息",
+				image: "/resources/image/about.png",
+			},
+		],
+
+		pageWidth: 0,
+		bgOpacity: [],
+		currentScrollX: 0, // 记录当前滚动位置
+
+		// ⭐ 动画状态
+		animClass: "",
+		isLeaving: false,
+	},
+
+	onInit() {
+		// 初次进入时，默认第一张背景显示
+		this.bgOpacity = this.bgList.map((_, idx) => (idx === 0 ? 1 : 0));
+	},
+
+	onShow() {
+		this.$broadcast("page-on-show", {});
+
+		// ⭐ 首页进入动画
+		this.isLeaving = false;
+		this.animClass = "";
+		setTimeout(() => {
+			this.animClass = "page-enter";
+		}, 0);
+
+		this.$element("funcScroll").getScrollRect({
+			success: ({ width }) => {
+				if (this.cards.length > 0) {
+					this.pageWidth = width / this.cards.length;
+					// 按当前 scrollX 重算一次背景，解决返回首页 glow 状态不对的问题
+					this.updateBgOpacityByScroll(this.currentScrollX);
+				}
+			},
+		});
+	},
+
+	onScroll(e) {
+		const { scrollX } = e;
+		this.currentScrollX = scrollX || 0;
+		this.updateBgOpacityByScroll(this.currentScrollX);
+	},
+
+	// 根据给定的 scrollX 更新背景透明度
+	updateBgOpacityByScroll(scrollX) {
+		if (!this.pageWidth || this.pageWidth <= 0) {
+			// 还没拿到宽度时，兜底：第一张显示，其余为 0
+			this.bgOpacity = this.bgList.map((_, idx) => (idx === 0 ? 1 : 0));
+			return;
+		}
+
+		const pageCount = this.cards.length;
+		if (pageCount === 0) return;
+
+		let index = Math.floor(scrollX / this.pageWidth);
+		if (index < 0) index = 0;
+		if (index >= pageCount) index = pageCount - 1;
+
+		const localX = scrollX - index * this.pageWidth;
+		let p = localX / this.pageWidth;
+		if (p < 0) p = 0;
+		if (p > 1) p = 1;
+
+		const op = this.bgList.map(() => 0);
+
+		if (index < this.bgList.length) {
+			op[index] = 1 - p;
+		}
+
+		if (index + 1 < this.bgList.length) {
+			op[index + 1] = p;
+		} else if (index < this.bgList.length) {
+			// 最后一页没有下一张背景时，保持当前张为 1
+			op[index] = 1;
+		}
+
+		this.bgOpacity = op;
+	},
+
+	routeDetail() {
+		router.back();
+	},
+
+	onClickCard(id) {
+		// ⭐ 离开首页时加退出动画
+		if (this.isLeaving) return;
+		this.isLeaving = true;
+
+		this.animClass = "page-leave";
+
+		let target = "";
+		switch (id) {
+			case "perm":
+			case "file":
+			case "shell":
+			case "setting":
+			case "log":
+			case "about":
+				target = "pages/" + id;
+				break;
+			default:
+				this.isLeaving = false;
+				this.animClass = "";
+				return;
+		}
+
+		setTimeout(() => {
+			router.push({ uri: target });
+		}, 180); // 与 CSS 动画时长保持一致
+	},
+
+	tosast(msg) {
+		prompt.showToast({
+			message: msg,
+			duration: 500,
+		});
+	},
+
+	async test() {
+		try {
+			const res = await suExec("uptime");
+			console.log("SU OK:", res.output);
+		} catch (e) {
+			console.log("SU ERR:", e.message);
+		}
+	},
+};
+</script>
+
+<style>
+.root,
+.stack,
+.box {
+	width: 100%;
+	height: 100%;
+}
+
+.stack {
+	flex-direction: column;
+	justify-content: flex-start;
+	align-items: center;
+}
+
+/* ⭐ 动画容器：只作用在背景 + 滑动卡片，不影响 time-bar */
+.page-body {
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	transform: scale(0.8);
+	transform-origin: center center;
+}
+
+/* 进入动画：中心放大 + 淡入 */
+.page-enter {
+	animation-name: centerScaleIn;
+	animation-duration: 220ms;
+	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+	animation-iteration-count: 1;
+}
+
+/* 退出动画：中心缩小 + 淡出 */
+.page-leave {
+	animation-name: centerScaleOut;
+	animation-duration: 180ms;
+	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+	animation-iteration-count: 1;
+	transform-origin: center center;
+}
+
+/* 进入关键帧 */
+@keyframes centerScaleIn {
+	0% {
+		opacity: 0;
+		transform: scale(0.8);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+/* 退出关键帧 */
+@keyframes centerScaleOut {
+	0% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(0.8);
+	}
+}
+
+.background {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.bg-layer {
+	position: absolute;
+	left: 0;
+	top: 0;
+}
+</style>

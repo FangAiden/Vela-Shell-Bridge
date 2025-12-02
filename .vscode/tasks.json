@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "运行 Lua 应用",
+      "type": "shell",
+      "command": "${workspaceFolder}\\pushlua.bat",
+      "presentation": {
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

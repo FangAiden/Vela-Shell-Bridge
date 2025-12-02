@@ -1,0 +1,199 @@
+-- main.lua — UI demo for ModuleInspector
+-- Requirements:
+--   - ModuleInspector.lua in package.path
+--   - No Chinese text rendering, no set_* methods, no Button widget
+--   - Round 466x466 layout safe area
+
+local lvgl        = require("lvgl")
+local Toast       = require("Toast")
+local Inspector   = require("ModuleInspector")
+local probe       = require("nuttx_probe")
+
+-- ===== Paths =====
+local OUTPUT_PATH = (os.getenv("TEMP") or "/tmp") .. "/module_inspect.txt"
+
+local ModName = 'navigator'
+
+-- ===== Screen & round-safe area =====
+local W           = (lvgl.HOR_RES and lvgl.HOR_RES() or 466)
+local H           = (lvgl.VER_RES and lvgl.VER_RES() or 466)
+local S           = math.min(W, H)
+local SAFE        = math.floor(S * 0.86) -- keep widgets inside the circle
+
+-- ===== Root =====
+local root        = lvgl.Object(nil, {
+    w = W,
+    h = H,
+    bg_color = 0x111111,
+    align = lvgl.ALIGN and lvgl.ALIGN.CENTER or nil,
+    border_width = 0,
+})
+if lvgl.FLAG and root.clear_flag then
+    root:clear_flag(lvgl.FLAG.SCROLLABLE)
+    root:add_flag(lvgl.FLAG.EVENT_BUBBLE)
+end
+
+-- A centered safe container
+local safeBox = lvgl.Object(root, {
+    w = SAFE,
+    h = SAFE,
+    align = lvgl.ALIGN and lvgl.ALIGN.CENTER or nil,
+    bg_opa = 0,
+    border_width = 0,
+})
+
+-- ===== Title =====
+local title = lvgl.Label(safeBox, {
+    text  = "Module Inspector",
+    align = lvgl.ALIGN and lvgl.ALIGN.TOP_MID or nil,
+})
+title:set {
+    text_color = 0xDDDDDD,
+    y = 6,
+}
+
+-- ===== Module name input (one-line Textarea) =====
+-- default to "lvgl"; you can edit then press the Scan button
+local modInput = lvgl.Textarea(safeBox, {
+    w          = SAFE - 40,
+    h          = 34,
+    text       = ModName,
+    one_line   = true,
+    bg_color   = "#1E2A38",
+    text_color = "#E0E0E0",
+    font_size  = 18,
+    align      = lvgl.ALIGN and lvgl.ALIGN.TOP_MID or nil,
+})
+modInput:set {
+    y = 34,
+    pad_left = 8, pad_right = 8, pad_top = 6, pad_bottom = 6,
+    radius = 8,
+}
+if lvgl.FLAG then modInput:add_flag(lvgl.FLAG.CLICKABLE) end
+
+-- ===== Output Textarea =====
+local taW = SAFE - 24
+local taH = SAFE - 24 - 24 - 120 - 46 -- leave room for input & buttons
+if taH < 120 then taH = 120 end
+
+local txtBox = lvgl.Textarea(safeBox, {
+    w = taW,
+    h = taH,
+    text = "",
+    bg_color = "#001A30",
+    text_color = "#C8C8C8",
+    font_size = 18,
+    align = lvgl.ALIGN and lvgl.ALIGN.CENTER or nil,
+    one_line = false,
+})
+-- txtBox:set { y = 20 }
+if lvgl.FLAG then txtBox:add_flag(lvgl.FLAG.CLICKABLE) end
+
+-- ===== Status (bottom, small) =====
+local statusLbl = lvgl.Label(safeBox, {
+    text  = "",
+    align = lvgl.ALIGN and lvgl.ALIGN.BOTTOM_MID or nil,
+})
+statusLbl:set {
+    y = -48,
+    text_color = 0xAAAAAA,
+}
+
+local function set_status(s)
+    statusLbl:set { text = s or "" }
+end
+
+-- ===== Button-like Label factory =====
+local function make_btn_label(parent, text, xofs)
+    local lab = lvgl.Label(parent, {
+        text  = text,
+        align = lvgl.ALIGN and lvgl.ALIGN.CENTER or nil,
+    })
+    lab:set {
+        bg_color   = "#2A2A2A",
+        text_color = 0xFFFFFF,
+        pad_left   = 16,
+        pad_right  = 16,
+        pad_top    = 8,
+        pad_bottom = 8,
+        radius     = 10,
+        x          = xofs,
+        border_width = 1,
+        border_color = "#F5F5F5"
+    }
+    if lvgl.FLAG then lab:add_flag(lvgl.FLAG.CLICKABLE) end
+    return lab
+end
+
+-- ===== Buttons row (bottom) =====
+local btnRow = lvgl.Object(safeBox, {
+    w = SAFE,
+    h = 42,
+    align = lvgl.ALIGN and lvgl.ALIGN.BOTTOM_MID or nil,
+    bg_opa = 0,
+    border_width = 0,
+})
+btnRow:set { y = -8 }
+
+-- Single centered button: Scan
+local btnScan = make_btn_label(btnRow, "Scan Module", 0)
+
+-- ===== Action: run inspector on click =====
+local function run_scan()
+    -- read module name from input
+    local ok_get, modname = pcall(function()
+        return modInput and modInput.get_text and modInput:get_text() or "lvgl"
+    end)
+    if not ok_get or not modname or modname == "" then modname = "lvgl" end
+
+    set_status("Exporting...")
+    if lvgl.refr_now then pcall(lvgl.refr_now, lvgl.scr_act and lvgl.scr_act() or nil) end
+
+    local ok, path_or_err, nlines = Inspector.inspect_by_name(modname, {
+        -- widget_list = {
+        --     "Object", "Label", "List", "Dropdown", "Textarea", "Keyboard",
+        --     "Image", "Led", "Roller", "Calendar", "AnalogTime", "Pointer", "Thumbnail",
+        --     "CurvedLabel", "ImageBar", "ImageLineBar", "ImageLabel", "Checkbox",
+        --     -- add or remove as needed for your binding
+        -- },
+        output_path = OUTPUT_PATH,
+        dump_methods = true,
+        dump_function_args = false,
+        enable_ctor_probe = true,
+        -- widget_list = { Object = true, Label = true, Image = true },
+        cfunc_probe = {
+            mode = "arity",           -- 解析 C 函数参数个数 + 报错中的期望类型
+            max_arity = 4,
+            lvgl_mod = lvgl,          -- 提供安全的 userdata 来源
+            allow_type_refine = true, -- 在模拟器上可以开
+        },
+    })
+
+    set_status("")
+    if ok then
+        local msg = string.format("Export OK:\n%s\nmodule: %s\nlines: %d", path_or_err, modname, nlines or 0)
+        txtBox:set { text = msg }
+        Toast.show("Exported", 900, root)
+    else
+        local msg = "Export failed:\n" .. tostring(path_or_err)
+        txtBox:set { text = msg }
+        Toast.show("Export failed", 1200, root)
+    end
+end
+
+local function run_probe()
+    -- 不加载，仅列出 preload / loaded，并把候选标记为 not_tested
+    local res = probe.probe({
+        try_names = candidates,
+        do_load   = false, -- 置 true 则会对 candidates 执行 pcall(require, ...)
+    })
+
+    probe.write_report(res, "/tmp/probe_result.txt")
+end
+
+-- Bind events
+btnScan:onevent(lvgl.EVENT and lvgl.EVENT.CLICKED or "clicked", run_scan)
+txtBox:onevent(lvgl.EVENT and lvgl.EVENT.CLICKED or "clicked", run_scan)
+
+-- Optional: run once at start (comment if you prefer manual)
+-- run_scan()

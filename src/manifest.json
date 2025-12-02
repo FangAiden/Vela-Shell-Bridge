@@ -1,0 +1,58 @@
+{
+  "package": "com.lua.dev.template",
+  "name": "LuaDevTemplate",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "minPlatformVersion": 1000,
+  "icon": "/logo.png",
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.router"
+    },
+    {
+      "name": "system.file"
+    },
+    {
+      "name": "system.device"
+    },
+    {
+      "name": "system.prompt"
+    },
+    {
+      "name": "system.app"
+    }
+  ],
+  "config": {
+    "logLevel": "log",
+    "designWidth": "device-width"
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": {
+        "component": "index"
+      },
+      "pages/perm": {
+        "component": "perm"
+      },
+      "pages/file": {
+        "component": "file"
+      },
+      "pages/shell": {
+        "component": "shell"
+      },
+      "pages/setting": {
+        "component": "setting"
+      },
+      "pages/log": {
+        "component": "log"
+      },
+      "pages/about": {
+        "component": "about"
+      }
+    }
+  }
+}

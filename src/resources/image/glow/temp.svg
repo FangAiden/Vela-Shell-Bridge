@@ -1,0 +1,15 @@
+<svg width="466" height="466" viewBox="0 0 466 466" xmlns="http://www.w3.org/2000/svg">
+    <defs> <!-- 蓝色聚光：浓蓝、高饱和，r=48%，cy=48% -->
+        <radialGradient id="blue-glow" cx="50%" cy="48%" r="50%"> <!-- 深浓蓝中心，不再淡、也不发白 -->
+            <stop offset="0%" stop-color="#0F4EDC" stop-opacity="0.50" />
+            <stop offset="15%" stop-color="#0F4EDC" stop-opacity="0.42" /> <!-- 过渡区也用高饱和深蓝 -->
+            <stop offset="35%" stop-color="#0C3EC0" stop-opacity="0.30" />
+            <stop offset="58%" stop-color="#092C8A" stop-opacity="0.15" /> <!-- 外圈淡出 -->
+            <stop offset="100%" stop-color="#050F2A" stop-opacity="0" />
+        </radialGradient>
+        <filter id="soft-blur" x="-15%" y="-15%" width="130%" height="130%">
+            <feGaussianBlur stdDeviation="12" />
+        </filter>
+    </defs> <!-- 深浓蓝聚光 -->
+    <rect width="100%" height="100%" fill="url(#blue-glow)" filter="url(#soft-blur)" />
+</svg>

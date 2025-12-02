@@ -1,0 +1,322 @@
+<import name="time-bar" src="../../components/timeBar"></import>
+
+<template>
+  <div class="root">
+    <!-- 顶部时间条：不参与动画 -->
+    <time-bar />
+
+    <!-- 动画主体：整块内容区域 -->
+    <div class="safe-area page-anim {{ animClass }}">
+      <scroll class="info-scroll" scroll-y="true" bounces="true">
+        <!-- 顶部设备卡片 -->
+        <div class="device-card">
+          <div class="device-avatar">
+            <div class="device-avatar-inner">
+              <image class="device-avatar-text" src="/resources/image/round_watch.png" />
+            </div>
+          </div>
+          <text class="device-name">{{ deviceName }}</text>
+          <text class="device-model">{{ model }}</text>
+          <text class="device-tag">开发设备</text>
+        </div>
+
+        <!-- —— 系统 —— -->
+        <text class="section-header">系统</text>
+        <div class="section-card">
+          <div class="row">
+            <text class="row-label">固件版本</text>
+            <text class="row-value" lines="1">{{ firmware }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">系统版本</text>
+            <text class="row-value" lines="2">{{ osVersion }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">Vela 运行时</text>
+            <text class="row-value" lines="1">{{ velaVersion }}</text>
+          </div>
+        </div>
+
+        <!-- —— 设备 —— -->
+        <text class="section-header">设备</text>
+        <div class="section-card">
+          <div class="row">
+            <text class="row-label">设备 ID</text>
+            <text class="row-value small" lines="1">{{ deviceId }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">存储使用</text>
+            <text class="row-value" lines="1">
+              {{ storageUsed }} / {{ storageTotal }}
+            </text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">电量</text>
+            <text class="row-value" lines="1">{{ batteryLevel }}%</text>
+          </div>
+        </div>
+
+        <!-- —— 应用 —— -->
+        <text class="section-header">应用</text>
+        <div class="section-card last-card">
+          <div class="row">
+            <text class="row-label">版本</text>
+            <text class="row-value" lines="1">{{ appVersion }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">构建号</text>
+            <text class="row-value" lines="1">{{ buildNumber }}</text>
+          </div>
+        </div>
+
+        <!-- 底部留一点空白，避免最后一行贴边 -->
+        <div class="blank"></div>
+      </scroll>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from "@system.router";
+
+export default {
+  data: {
+    deviceName: "Root Shell Watch",
+    model: "Watch DevKit",
+
+    firmware: "1.0.0",
+    osVersion: "NuttX / Vela",
+    velaVersion: "Vela QuickApp 1.0",
+
+    deviceId: "UNKNOWN",
+    storageUsed: "—",
+    storageTotal: "—",
+    batteryLevel: "--",
+
+    appVersion: "0.1.0",
+    buildNumber: "dev",
+
+    // 页面动画状态
+    animClass: "",
+    isLeaving: false,
+  },
+
+  onShow() {
+    this.$broadcast("page-on-show", {});
+
+    this.isLeaving = false;
+    this.animClass = "";
+    setTimeout(() => {
+      this.animClass = "page-enter";
+    }, 0);
+  },
+
+  onBackPress() {
+    if (this.isLeaving) return true;
+
+    this.isLeaving = true;
+    this.animClass = "page-leave";
+
+    setTimeout(() => {
+      router.back();
+    }, 180);
+
+    return true;
+  },
+};
+</script>
+
+<style>
+/* —— 整体布局 —— */
+.root {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  background-color: #000;
+}
+
+/* 现在 safe-area 不再垂直居中，而是铺满 time-bar 下面的空间 */
+.safe-area {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;  /* 水平居中内容 */
+}
+
+/* 只在左右方向做安全区限制，垂直方向用满 */
+.info-scroll {
+  width: 88%;          /* 比原来的 82% 稍微宽一点，提高利用率 */
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* —— 顶部设备卡片 —— */
+.device-card {
+  width: 75%;
+  border-radius: 22px;
+  background-color: #151515;
+  padding: 16px 10px 14px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;     /* 距离 time-bar 稍微留一点 */
+  margin-bottom: 14px;
+}
+
+.device-avatar {
+  width: 66px;
+  height: 66px;
+  border-radius: 33px;
+  border-width: 2px;
+  border-color: #00d36f;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.device-avatar-inner {
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background-color: #0b0b0b;
+  justify-content: center;
+  align-items: center;
+}
+
+.device-avatar-text {
+  width: 80%;
+  height: 80%;
+}
+
+.device-name {
+  color: #f5f5f5;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.device-model {
+  color: #999999;
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.device-tag {
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  border-width: 1px;
+  border-color: #00d36f;
+  color: #00d36f;
+  font-size: 11px;
+}
+
+/* —— 分区标题（在卡片外） —— */
+.section-header {
+  width: 100%;
+  color: #cccccc;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  text-align: left;
+  padding-left: 4px;
+}
+
+/* —— 信息卡片 —— */
+.section-card {
+  width: 100%;
+  border-radius: 16px;
+  background-color: #121212;
+  padding: 8px 12px 6px;
+  margin-bottom: 14px;
+}
+
+.last-card {
+  margin-bottom: 8px;
+}
+
+/* —— 每条信息：一行容器，内部上下两行（标题 + 值） —— */
+.row {
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+/* 标题 */
+.row-label {
+  color: #f5f5f5;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 值：终端绿，可换行 */
+.row-value {
+  color: #7cff7c;
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+/* 设备 ID 等长串小一点 */
+.row-value.small {
+  font-size: 14px;
+}
+
+/* 底部空白，防止最后一块贴到圆边 */
+.blank {
+  height: 140px;
+}
+
+/* —— 页面动画 —— */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+.page-enter {
+  animation-name: pageIn;
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+}
+
+.page-leave {
+  animation-name: pageOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+}
+
+@keyframes pageIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pageOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+</style>
