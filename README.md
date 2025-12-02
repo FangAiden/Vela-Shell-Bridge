@@ -1,3 +1,17 @@
+## 项目介绍
+
+watch-lua-sudo 是一个为智能手表设计的 QuickApp → Lua → Shell 执行桥接层。
+它允许普通快应用，在严格的权限策略下，通过 Lua 守护进程执行系统级 Shell 命令。
+
+- 文件 IPC 作为通信通道
+- Lua 守护进程负责执行与回显
+- 支持权限管理、执行日志、白名单
+- 可在手表和 PC 模拟器运行
+
+这是一个能让 QuickApp 执行系统命令 的受控提权模块。
+
+## 流程图
+
 ```mermaid
 sequenceDiagram
   participant B as AppB (QuickApp)
@@ -16,6 +30,8 @@ sequenceDiagram
   L->>FS: Delete ipc_request_7.json
   FS->>B: AppB reads response file
 ```
+
+## 架构图1
 
 ```mermaid
 flowchart LR
@@ -118,6 +134,8 @@ subgraph Sim["Dev PC / Simulator (Lua Only)"]
 end
 
 ```
+
+## 架构图2
 
 ```mermaid
 graph TB
