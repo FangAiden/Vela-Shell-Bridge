@@ -10,6 +10,11 @@ Vela-Shell-Bridge 是一个为小米VelaOS穿戴设备设计的 QuickApp → Lua
 
 这是一个能让 QuickApp 执行系统命令 的受控提权模块。
 
+## 开发文档
+
+[Lua表盘应用文档](https://github.com/FangAiden/Lua_Watchface_Documentation)
+[Vela JS 快应用文档](https://iot.mi.com/vela/quickapp/)
+
 ## 流程图
 
 ```mermaid
