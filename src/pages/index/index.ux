@@ -106,7 +106,7 @@ export default {
 		animClass: "",
 		isLeaving: false,
 	},
-
+	
 	onInit() {
 		// 初次进入时，默认第一张背景显示
 		this.bgOpacity = this.bgList.map((_, idx) => (idx === 0 ? 1 : 0));

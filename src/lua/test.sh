@@ -1,20 +1,17 @@
 #!/bin/sh
+echo "=== Error Code Test ==="
 
-echo "TEST 1: no set +e"
-sh -c 'cp /no_such_file /tmp/out; echo "ECHO1: $? executed"'
+# 1. 创建一个必定失败的子脚本（调用一个不存在的命令，标准sh应该返回127）
+echo "this_cmd_does_not_exist" > fail.sh
 
+# 2. 使用 if 执行它，并在 else 中查看 $?
+if sh fail.sh > /dev/null
+then
+    echo "Unexpected: Command succeeded"
+else
+    ERR=$?
+    echo "Captured Error Code: $ERR"
+fi
 
-echo ""
-echo "TEST 2: set +e inside sh"
-sh -c 'set +e; cp /no_such_file /tmp/out; echo "ECHO2: $? executed"'
-
-
-echo ""
-echo "TEST 3: set -e inside sh"
-sh -c 'set -e; cp /no_such_file /tmp/out; echo "ECHO3: $? executed"'
-
-
-echo ""
-echo "TEST 4: set +e in outer shell, failing command in inner"
-set +e
-sh -c 'cp /no_such_file /tmp/out; echo "ECHO4: $? executed"'
+# 清理
+rm fail.sh

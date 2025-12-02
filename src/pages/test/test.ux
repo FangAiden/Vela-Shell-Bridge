@@ -1,0 +1,144 @@
+<import name="time-bar" src="../../components/timeBar"></import>
+
+<template>
+  <div class="root">
+    <time-bar />
+
+    <div class="safe-area page-anim {{ animClass }}">
+      <scroll class="box" scroll-y="true" bounces="true">
+        <text class="title">Test Page</text>
+        <text class="content">这是一个新的测试页面。</text>
+        
+        <div class="btn" onclick="onTestClick">
+          <text class="btn-text">点击测试</text>
+        </div>
+      </scroll>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from "@system.router";
+import prompt from "@system.prompt";
+
+export default {
+  data: {
+    // 页面动画状态
+    animClass: "",
+    isLeaving: false,
+  },
+
+  onShow() {
+    this.$broadcast("page-on-show", {});
+    // 进入动画
+    this.isLeaving = false;
+    this.animClass = "";
+    setTimeout(() => {
+      this.animClass = "page-enter";
+    }, 0);
+  },
+
+  // 处理返回逻辑（带动画）
+  onBackPress() {
+    if (this.isLeaving) return true;
+    this.isLeaving = true;
+    this.animClass = "page-leave";
+    setTimeout(() => {
+      router.back();
+    }, 180);
+    return true;
+  },
+
+  onTestClick() {
+    prompt.showToast({
+      message: "测试按钮被点击",
+    });
+  },
+};
+</script>
+
+<style>
+/* 基础布局 */
+.root {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  background-color: #000000;
+}
+
+.safe-area {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.box {
+  width: 80%;
+  height: 80%;
+  flex-direction: column;
+  align-items: center;
+}
+
+.title {
+  font-size: 36px;
+  color: #ffffff;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.content {
+  font-size: 24px;
+  color: #888888;
+  margin-bottom: 40px;
+}
+
+/* 按钮样式 */
+.btn {
+  width: 100%;
+  height: 80px;
+  background-color: #333333;
+  border-radius: 40px;
+  justify-content: center;
+  align-items: center;
+}
+
+.btn-text {
+  color: #ffffff;
+  font-size: 28px;
+}
+
+/* 页面进出动画 */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+.page-enter {
+  animation-name: pageIn;
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+}
+
+.page-leave {
+  animation-name: pageOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+}
+
+@keyframes pageIn {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pageOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.8); }
+}
+</style>

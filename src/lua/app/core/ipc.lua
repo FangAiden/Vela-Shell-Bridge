@@ -1,5 +1,6 @@
 -- app/core/ipc.lua
--- 文件 IPC 守护进程：扫描 QUICKAPP_BASE 下各 App 目录，处理 exec / management 请求
+-- 文件 IPC 守护进程
+-- 更新：支持 exec 的 sync 模式和 kill 命令
 
 local config    = require("app.config")
 local fs        = require("app.util.fs_util")
@@ -15,7 +16,6 @@ local M = {}
 local QUICKAPP_BASE = config.QUICKAPP_BASE
 local ADMIN_APP_ID  = config.ADMIN_APP_ID
 
--- ipc_request_<id>.json
 local REQ_PATTERN = "^ipc_request_([%w_%-]+)%.json$"
 
 local function log(msg)
@@ -27,7 +27,7 @@ local function log(msg)
 end
 
 ----------------------------------------------------------------------
--- 基础工具：读写 JSON、响应包装
+-- 基础工具
 ----------------------------------------------------------------------
 
 local function read_json_file(path)
@@ -74,7 +74,7 @@ local function error_response(req_id, code, message, extra)
 end
 
 ----------------------------------------------------------------------
--- Management 命令（仅 ADMIN_APP_ID 可用）
+-- Management 命令
 ----------------------------------------------------------------------
 
 local function handle_management(app_id, req)
@@ -120,33 +120,43 @@ local function handle_management(app_id, req)
 end
 
 ----------------------------------------------------------------------
--- Exec：异步 Job 模型
--- - 没有 args.job_id → 启动新 job (start_job)
--- - 有 args.job_id   → 轮询状态       (poll_job)
+-- Exec：执行命令 (Sync/Async) 或 Kill
 ----------------------------------------------------------------------
 
 local function handle_exec(app_id, req)
-    local args     = req.args or {}
+    local args = req.args or {}
+    local cmd  = req.cmd -- "exec" or "kill"
+
+    -- 1. 处理 Kill 命令 [新增]
+    if cmd == "kill" then
+        if not args.job_id then
+            return error_response(req.id, "BAD_REQUEST", "job_id required for kill")
+        end
+        -- 调用 exec.lua 的 kill_job
+        return execmod.kill_job(args.job_id)
+    end
+
+    -- 下面是 exec 逻辑
     local shell_cmd = args.shell
     local job_id    = args.job_id
+    local is_sync   = (args.sync == true) -- [新增] 读取同步标志
 
-    -- 查询已有 Job 状态：不计入 request log，也不做策略检查
+    -- 2. 轮询已有 Job (poll_job)
+    -- 如果传了 job_id，说明是来查状态的
     if job_id and job_id ~= "" then
         local r = execmod.poll_job(job_id)
-        -- r 本身已经是 { ok, async, job_id, state, result? }
         r.id = req.id
         return r
     end
 
-    -- 启动新 Job：需要策略 + 日志
+    -- 3. 启动新 Job (start_job)
     if not shell_cmd or shell_cmd == "" then
         return error_response(req.id, "BAD_REQUEST", "args.shell required")
     end
 
-    -- 记录一次请求日志（包括 admin）
     logmod.record_request(app_id)
 
-    -- 管理员 App：跳过策略检查，直接允许
+    -- 权限检查
     if app_id ~= ADMIN_APP_ID then
         local allowed, reason = policy.check_exec_allowed(app_id)
         if not allowed then
@@ -159,8 +169,8 @@ local function handle_exec(app_id, req)
         end
     end
 
-    -- 启动后台 Job
-    local r = execmod.start_job(shell_cmd)
+    -- 启动任务 (传入 is_sync 参数)
+    local r = execmod.start_job(shell_cmd, is_sync)
     r.id = req.id
     return r
 end
@@ -185,16 +195,13 @@ end
 
 local function process_request_file(app_id, app_dir, file_name)
     local id = file_name:match(REQ_PATTERN)
-    if not id then
-        return
-    end
+    if not id then return end
 
     local req_path  = app_dir .. "/" .. file_name
     local resp_path = app_dir .. "/ipc_response_" .. id .. ".json"
 
     local req, err = read_json_file(req_path)
     if not req then
-        log("process_request_file: invalid json: " .. tostring(err))
         local resp = error_response(id, "BAD_REQUEST", "invalid json: " .. tostring(err))
         write_json_file(resp_path, resp)
         fs.remove_file(req_path)
@@ -210,7 +217,6 @@ local function process_request_file(app_id, app_dir, file_name)
     end
 
     if resp then
-        -- resp.id 已经在 handle_exec / handle_management 里设置好了
         write_json_file(resp_path, resp)
     end
 
@@ -218,7 +224,7 @@ local function process_request_file(app_id, app_dir, file_name)
 end
 
 ----------------------------------------------------------------------
--- 扫描某个 App 目录
+-- 扫描 app
 ----------------------------------------------------------------------
 
 local function scan_app(app_id)
@@ -234,14 +240,12 @@ local function scan_app(app_id)
 end
 
 ----------------------------------------------------------------------
--- 每轮运行一次：由 app.app 里的 Timer 周期调用
+-- 每轮运行
 ----------------------------------------------------------------------
 
 function M.run_once()
-    -- 1) 管理员 App
     scan_app(ADMIN_APP_ID)
 
-    -- 2) allowlist 中的其他 App
     local list = allowlist.get_all()
     if list then
         for app_id, enabled in pairs(list) do
@@ -251,7 +255,6 @@ function M.run_once()
         end
     end
 
-    -- 3) 持久化策略/日志/allowlist
     policy.save_if_dirty()
     logmod.save_if_dirty()
     allowlist.save_if_dirty()

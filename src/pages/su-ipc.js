@@ -1,17 +1,19 @@
-// su-ipc.js  (QuickApp 通用 SU IPC 模块：AppA/AppB 都可以用)
-// - exec: suExec(shellCmd, options)
-// - management: suExec.management.{getPolicies,setPolicy,getLogs,clearLogs,setAllowlist}
-// - 带守护存活检测：Lua 端未启动时快速返回 SU_DAEMON_UNAVAILABLE
+// su-ipc.js  (QuickApp 通用 SU IPC 模块)
+// 功能全集：
+// 1. suExec(cmd): 默认异步执行，防卡死
+// 2. suExec(cmd, { sync: true }): 同步阻塞执行，获取精确错误码 (127/126)
+// 3. suExec(cmd, { onProgress: (log)=>{} }): 异步模式下获取实时输出
+// 4. suExec.kill(jobId): 主动杀死任务
 
 import file from '@system.file';
-import app from '@system.app' 
+import app from '@system.app';
 
 const BASE = 'internal://files/';
 
 // 单次 IPC 请求等待超时（用来判断守护是否在线）
 const REQUEST_TIMEOUT = 1250;
 
-// 整个 suExec 允许的最长等待时间（包含 job 轮询）
+// 整个 suExec 允许的最长等待时间（仅用于异步模式）
 const EXEC_OVERALL_TIMEOUT = 30000;
 
 // 轮询 job 状态的间隔
@@ -25,9 +27,8 @@ let QuickAppPath = `/data/app/`;
 let packageName = getPackageName();
 
 // 守护状态机
-let daemonState = 'unknown';   // 'unknown' | 'up' | 'down'
+let daemonState = 'unknown'; // 'unknown' | 'up' | 'down'
 let lastDaemonFailTime = 0;
-// 守护判定为 down 后，这段时间内直接失败，不再尝试写文件 / 轮询
 const DAEMON_RETRY_INTERVAL = 5000; // ms
 
 function getPackageName() {
@@ -38,9 +39,6 @@ function genRequestId() {
   return Date.now().toString() + '_' + Math.floor(Math.random() * 100000);
 }
 
-/**
- * 守护不可用错误类型
- */
 class DaemonUnavailableError extends Error {
   constructor(message) {
     super(message || 'SU daemon is not available');
@@ -50,21 +48,18 @@ class DaemonUnavailableError extends Error {
 }
 
 /**
- * 底层：发送一次 IPC 请求并得到原始响应 JSON
- * payload: { id?, type, cmd, args? }
+ * 底层：发送一次 IPC 请求
  */
 function sendIpcRequest(payload, options = {}) {
   const baseUri = options.baseUri || BASE;
   const pollInterval = options.pollInterval || 100;
   const timeoutMs = options.timeoutMs || REQUEST_TIMEOUT;
 
-  // ① 守护状态预检查：down & 冷却期内 -> 直接失败
   if (daemonState === 'down') {
     const now = Date.now();
     if (now - lastDaemonFailTime < DAEMON_RETRY_INTERVAL) {
       return Promise.reject(new DaemonUnavailableError('SU daemon is down (cached)'));
     }
-    // 冷却期过了，允许再试一次
   }
 
   const id = payload.id || genRequestId();
@@ -81,11 +76,8 @@ function sendIpcRequest(payload, options = {}) {
     const timeoutId = setTimeout(() => {
       if (settled) return;
       settled = true;
-
-      // ② 请求在 timeoutMs 内没拿到 response -> 判定守护 down
       daemonState = 'down';
       lastDaemonFailTime = Date.now();
-
       reject(new DaemonUnavailableError(`SU IPC timeout after ${timeoutMs} ms (id=${id})`));
     }, timeoutMs);
 
@@ -107,11 +99,9 @@ function sendIpcRequest(payload, options = {}) {
         uri: resUri,
         success(data) {
           if (settled) return;
-
-          let rawText = data.text;
           let obj;
           try {
-            obj = JSON.parse(rawText || '{}');
+            obj = JSON.parse(data.text || '{}');
           } catch (e) {
             setTimeout(pollResponse, pollInterval);
             return;
@@ -122,20 +112,14 @@ function sendIpcRequest(payload, options = {}) {
             return;
           }
 
-          // ③ 收到任何响应 -> 守护在线
           daemonState = 'up';
-
           safeSettle(() => {
-            if (file.delete) {
-              try { file.delete({ uri: resUri }); } catch (_) {}
-            }
+            if (file.delete) try { file.delete({ uri: resUri }); } catch (_) {}
             resolve(obj);
           });
         },
-        fail(_data, _code) {
-          if (!settled) {
-            setTimeout(pollResponse, pollInterval);
-          }
+        fail() {
+          if (!settled) setTimeout(pollResponse, pollInterval);
         }
       });
     }
@@ -155,82 +139,86 @@ function sendIpcRequest(payload, options = {}) {
   });
 }
 
-/**
- * 串行化执行：同一时间只允许一个 SU 流程在飞
- */
 function runExclusive(taskFn) {
   if (currentExecution) {
     return Promise.reject(new Error('SU is busy: previous command is still running'));
   }
-
   const p = Promise.resolve().then(taskFn);
   currentExecution = p;
-
-  const unlock = () => {
-    if (currentExecution === p) {
-      currentExecution = null;
-    }
-  };
-
-  return p.then(
-    (v) => {
-      unlock();
-      return v;
-    },
-    (err) => {
-      unlock();
-      throw err;
-    }
-  );
+  const unlock = () => { if (currentExecution === p) currentExecution = null; };
+  return p.then(v => { unlock(); return v; }, e => { unlock(); throw e; });
 }
 
 /**
- * 通用 exec：对外仍是“一次 await”，内部是 start + status 两步
- *
- * - 如果 Lua 守护没启动：
- *   - 第一条请求 ~REQUEST_TIMEOUT 内判定为 DaemonUnavailableError
- *   - 后续 DAEMON_RETRY_INTERVAL 内再次调用，立即抛同样错误（不写文件）
+ * 核心执行函数
+ * @param {string} shellCmd - 要执行的命令
+ * @param {object} options - 配置项
+ * @param {boolean} [options.sync=false] - 是否使用同步模式 (能拿精确错误码，但可能阻塞)
+ * @param {function} [options.onProgress] - 实时日志回调 (output) => {}
+ * @param {number} [options.timeoutMs=30000] - 异步模式下的总超时时间
  */
 function suExec(shellCmd, options = {}) {
   if (!shellCmd || typeof shellCmd !== 'string') {
     return Promise.reject(new Error('shellCmd must be a non-empty string'));
   }
 
+  // 提取参数
+  const isSync = options.sync === true;
+  const onProgress = options.onProgress;
   const pollInterval = options.statusPollInterval || STATUS_POLL_INTERVAL;
   const overallTimeoutMs = options.timeoutMs || EXEC_OVERALL_TIMEOUT;
 
   return runExclusive(async () => {
-    const startTime = Date.now();
-
-    // 1) start job（type=exec, cmd=exec, args.shell）
+    // 1. 发送执行请求
     let startResp;
     try {
       startResp = await sendIpcRequest({
         type: 'exec',
         cmd: 'exec',
-        args: { shell: shellCmd }
-      }, { timeoutMs: REQUEST_TIMEOUT });
+        args: { 
+          shell: shellCmd,
+          sync: isSync // 传递 sync 标志
+        }
+      }, { 
+        // 同步模式下给予更多等待时间
+        timeoutMs: isSync ? (overallTimeoutMs + 2000) : REQUEST_TIMEOUT 
+      });
     } catch (err) {
-      // 守护不可用错误直接透传
       throw err;
     }
 
     if (!startResp.ok) {
-      const msg = startResp.message || (startResp.error && startResp.error.message) || 'SU exec start failed';
+      const msg = startResp.message || 'SU exec start failed';
       const err = new Error(msg);
       err.raw = startResp;
       throw err;
     }
 
-    const jobId = startResp.job_id;
-    if (!jobId) {
-      const err = new Error('SU exec start: missing job_id');
-      err.raw = startResp;
-      throw err;
+    // A. 同步模式：直接拿到结果返回
+    if (isSync) {
+      const data = startResp.result || startResp.data || {};
+      return {
+        id: startResp.id,
+        ok: true,
+        mode: 'sync',
+        exitCode: data.exit_code,
+        status: data.status,
+        success: data.success,
+        output: data.output,
+        raw: startResp
+      };
     }
 
-    // 2) poll status（type=exec, args.job_id）
+    // B. 异步模式：轮询状态
+    const jobId = startResp.job_id;
+    if (!jobId) {
+      throw new Error('SU exec start: missing job_id');
+    }
+
+    const startTime = Date.now();
+
     while (true) {
+      // 超时检查
       if (Date.now() - startTime > overallTimeoutMs) {
         throw new Error(`SU exec overall timeout after ${overallTimeoutMs} ms`);
       }
@@ -245,26 +233,30 @@ function suExec(shellCmd, options = {}) {
           args: { job_id: jobId }
         }, { timeoutMs: REQUEST_TIMEOUT });
       } catch (err) {
-        // 守护中途挂掉 -> 抛出 DaemonUnavailableError
         throw err;
       }
 
       if (!stResp.ok) {
-        const msg = stResp.message || (stResp.error && stResp.error.message) || 'SU exec status failed';
-        const err = new Error(msg);
-        err.raw = stResp;
-        throw err;
+        throw new Error(stResp.message || 'SU exec status failed');
       }
 
-      if (stResp.state === 'running') {
-        continue;
+      // [核心] 实时日志回调
+      // 只要后端返回了 result.output，我们就回调给上层
+      if (stResp.result && stResp.result.output && typeof onProgress === 'function') {
+          try {
+              onProgress(stResp.result.output);
+          } catch (e) {
+              console.error("onProgress error:", e);
+          }
       }
 
+      // 任务完成
       if (stResp.state === 'done') {
         const data = stResp.result || {};
         return {
           id: stResp.id,
           ok: true,
+          mode: 'async',
           jobId,
           exitCode: data.exit_code,
           status: data.status,
@@ -273,124 +265,52 @@ function suExec(shellCmd, options = {}) {
           raw: stResp
         };
       }
-
-      const err = new Error(`Unknown job state: ${stResp.state}`);
-      err.raw = stResp;
-      throw err;
     }
   });
 }
 
 /**
- * 管理端 API（AppA 使用）
- * - 这些接口同样走 sendIpcRequest，因此也有守护存活检测
+ * 主动杀死任务
+ * @param {string} jobId - 要杀死的任务ID
  */
+function killJob(jobId) {
+  return runExclusive(async () => {
+    const resp = await sendIpcRequest({
+      type: 'exec',
+      cmd: 'kill',
+      args: { job_id: jobId }
+    });
+
+    if (!resp.ok) {
+      throw new Error(resp.message || 'kill failed');
+    }
+    return resp.data || resp;
+  });
+}
+
+// 管理端 API
 const management = {
-  getPolicies(options = {}) {
-    return runExclusive(async () => {
-      const resp = await sendIpcRequest({
-        type: 'management',
-        cmd: 'get_policies',
-        args: {}
-      }, options);
-
-      if (!resp.ok) {
-        const err = new Error(resp.message || 'getPolicies failed');
-        err.raw = resp;
-        throw err;
-      }
-      return resp.data;
-    });
-  },
-
-  setPolicy(appId, policy, options = {}) {
-    return runExclusive(async () => {
-      const resp = await sendIpcRequest({
-        type: 'management',
-        cmd: 'set_policy',
-        args: { app_id: appId, policy }
-      }, options);
-
-      if (!resp.ok) {
-        const err = new Error(resp.message || 'setPolicy failed');
-        err.raw = resp;
-        throw err;
-      }
-      return resp.data;
-    });
-  },
-
-  getLogs(options = {}) {
-    return runExclusive(async () => {
-      const resp = await sendIpcRequest({
-        type: 'management',
-        cmd: 'get_logs',
-        args: {}
-      }, options);
-
-      if (!resp.ok) {
-        const err = new Error(resp.message || 'getLogs failed');
-        err.raw = resp;
-        throw err;
-      }
-      return resp.data;
-    });
-  },
-
-  clearLogs(options = {}) {
-    return runExclusive(async () => {
-      const resp = await sendIpcRequest({
-        type: 'management',
-        cmd: 'clear_logs',
-        args: {}
-      }, options);
-
-      if (!resp.ok) {
-        const err = new Error(resp.message || 'clearLogs failed');
-        err.raw = resp;
-        throw err;
-      }
-      return resp.data;
-    });
-  },
-
-  setAllowlist(list, options = {}) {
-    return runExclusive(async () => {
-      const resp = await sendIpcRequest({
-        type: 'management',
-        cmd: 'set_allowlist',
-        args: { allowlist: list }
-      }, options);
-
-      if (!resp.ok) {
-        const err = new Error(resp.message || 'setAllowlist failed');
-        err.raw = resp;
-        throw err;
-      }
-      return resp.data;
-    });
-  }
+  getPolicies: (opts) => wrapMgmt('get_policies', {}, opts),
+  setPolicy: (appId, pol, opts) => wrapMgmt('set_policy', { app_id: appId, policy: pol }, opts),
+  getLogs: (opts) => wrapMgmt('get_logs', {}, opts),
+  clearLogs: (opts) => wrapMgmt('clear_logs', {}, opts),
+  setAllowlist: (list, opts) => wrapMgmt('set_allowlist', { allowlist: list }, opts)
 };
 
-// 挂在主函数上，方便统一引用
+function wrapMgmt(cmd, args, options) {
+  return runExclusive(async () => {
+    const resp = await sendIpcRequest({ type: 'management', cmd, args }, options);
+    if (!resp.ok) throw new Error(resp.message || cmd + ' failed');
+    return resp.data;
+  });
+}
+
+// 挂载 API
 suExec.exec = suExec;
+suExec.kill = killJob;
 suExec.management = management;
-suExec.getSandboxPath = function () {
-  return SandboxPath;
-};
-suExec.getQuickAppPath = function () {
-  return QuickAppPath;
-};
-suExec.getPackageName = function () {
-  return packageName;
-};
-
-// 提供一个调试用的获取守护状态的函数
-suExec.getDaemonState = function () {
-  return {
-    state: daemonState,
-    lastFailTime: lastDaemonFailTime
-  };
-};
+suExec.getSandboxPath = () => SandboxPath;
+suExec.getQuickAppPath = () => QuickAppPath;
+suExec.getPackageName = () => packageName;
 
 export default suExec;

@@ -1,10 +1,12 @@
 <template>
-	<div class="root">
+	<div class="root" onclick="onClickTimeBar">
 		<text class="time">{{ time }}</text>
 	</div>
 </template>
 
 <script>
+import router from "@system.router";
+
 export default {
 	props: ["showFlag"],
 	data: {
@@ -26,6 +28,12 @@ export default {
 		}
 
 		this.$off('page-on-show', this.handleParentShow);
+	},
+
+	onClickTimeBar() {
+		router.push({
+			uri: "pages/test",
+		});
 	},
 
 	handleParentShow() {

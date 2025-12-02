@@ -139,7 +139,7 @@ export default {
 			
 			this.permList.push({
 				title: element.names[0].value,
-				image: "/tmp/" + icon,
+				image: `/tmp/${element.package}/${icon}`,
 				count: "0",
 				time: "00:00",
 				index: element.package,
