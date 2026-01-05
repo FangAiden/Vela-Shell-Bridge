@@ -77,11 +77,11 @@ end
 
 ----------------------------------------------------------------------
 -- list_files: 返回 dir 下 ls 的所有条目（文件 + 目录名字符串）
--- 等价于：cd dir && ls
+-- 等价于：ls dir
 ----------------------------------------------------------------------
 
 function M.list_files(dir)
-    -- 不用 ls 的任何参数，只用 cd+ls
+    -- 不用 ls 的任何参数，只用 ls dir（避免依赖 && 之类不一定存在的运算符）
     local cmd = string.format('ls %s', dir)
     return run_shell_list(cmd)
 end

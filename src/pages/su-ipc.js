@@ -1,11 +1,4 @@
-// su-ipc.js  (QuickApp 通用 SU IPC 模块)
-// 功能全集：
-// 1. suExec(cmd): 默认异步执行
-// 2. suExec(cmd, { sync: true }): 同步阻塞执行
-// 3. suExec(cmd, { onStart: (id)=>{} }): [新增] 获取任务ID，用于 Kill
-// 4. suExec(cmd, { onProgress: (log, id)=>{} }): 实时输出
-// 5. suExec.kill(jobId): 主动杀死任务
-
+// src/pages/su-ipc.js
 import file from '@system.file';
 import app from '@system.app';
 
@@ -15,17 +8,9 @@ const EXEC_OVERALL_TIMEOUT = 30000;
 const STATUS_POLL_INTERVAL = 200;
 
 let currentExecution = null;
-let SandboxPath = `/data/files/`;
-let QuickAppPath = `/data/app/`;
-let packageName = getPackageName();
-
 let daemonState = 'unknown';
 let lastDaemonFailTime = 0;
 const DAEMON_RETRY_INTERVAL = 5000;
-
-function getPackageName() {
-  return app.getInfo().packageName;
-}
 
 function genRequestId() {
   return Date.now().toString() + '_' + Math.floor(Math.random() * 100000);
@@ -35,7 +20,6 @@ class DaemonUnavailableError extends Error {
   constructor(message) {
     super(message || 'SU daemon is not available');
     this.name = 'DaemonUnavailableError';
-    this.code = 'SU_DAEMON_UNAVAILABLE';
   }
 }
 
@@ -53,7 +37,6 @@ function sendIpcRequest(payload, options = {}) {
 
   const id = payload.id || genRequestId();
   payload.id = id;
-
   const reqUri = `${baseUri}ipc_request_${id}.json`;
   const resUri = `${baseUri}ipc_response_${id}.json`;
   const text = JSON.stringify(payload);
@@ -65,7 +48,7 @@ function sendIpcRequest(payload, options = {}) {
       settled = true;
       daemonState = 'down';
       lastDaemonFailTime = Date.now();
-      reject(new DaemonUnavailableError(`SU IPC timeout after ${timeoutMs} ms (id=${id})`));
+      reject(new DaemonUnavailableError(`Timeout ${timeoutMs}ms (id=${id})`));
     }, timeoutMs);
 
     function safeSettle(fn) {
@@ -95,74 +78,65 @@ function sendIpcRequest(payload, options = {}) {
     }
 
     file.writeText({
-      uri: reqUri,
-      text,
+      uri: reqUri, text,
       success() { setTimeout(pollResponse, pollInterval); },
-      fail(_data, code) { safeSettle(() => { reject(new Error(`SU IPC writeText failed: ${code}`)); }); }
+      fail(_d, code) { safeSettle(() => { reject(new Error(`Write failed: ${code}`)); }); }
     });
   });
 }
 
 function runExclusive(taskFn) {
-  if (currentExecution) {
-    return Promise.reject(new Error('SU is busy: previous command is still running'));
-  }
+  if (currentExecution) return Promise.reject(new Error('BUSY: Previous command running'));
   const p = Promise.resolve().then(taskFn);
   currentExecution = p;
   const unlock = () => { if (currentExecution === p) currentExecution = null; };
   return p.then(v => { unlock(); return v; }, e => { unlock(); throw e; });
 }
 
+// ---------------------------------------------------------
+// 核心 suExec
+// ---------------------------------------------------------
 function suExec(shellCmd, options = {}) {
-  if (!shellCmd || typeof shellCmd !== 'string') {
-    return Promise.reject(new Error('shellCmd must be a non-empty string'));
-  }
+  if (!shellCmd || typeof shellCmd !== 'string') return Promise.reject(new Error('Cmd required'));
 
   const isSync = options.sync === true;
   const onProgress = options.onProgress;
-  const onStart = options.onStart; // [新增]
+  const onStart = options.onStart;
   const pollInterval = options.statusPollInterval || STATUS_POLL_INTERVAL;
   const overallTimeoutMs = options.timeoutMs || EXEC_OVERALL_TIMEOUT;
 
   return runExclusive(async () => {
+    // 1. 发送 Start 请求
     let startResp;
     try {
       startResp = await sendIpcRequest({
         type: 'exec', cmd: 'exec',
         args: { shell: shellCmd, sync: isSync }
-      }, { 
-        timeoutMs: isSync ? (overallTimeoutMs + 2000) : REQUEST_TIMEOUT 
-      });
+      }, { timeoutMs: isSync ? (overallTimeoutMs + 2000) : REQUEST_TIMEOUT });
     } catch (err) { throw err; }
 
-    if (!startResp.ok) {
-      const err = new Error(startResp.message || 'SU exec start failed');
-      err.raw = startResp;
-      throw err;
-    }
+    if (!startResp.ok) throw new Error(startResp.message || 'Exec start failed');
 
-    // [新增] 启动成功，立即回调 jobId
+    // 2. 回调 JobID
     if (startResp.job_id && typeof onStart === 'function') {
-        try { onStart(startResp.job_id); } catch (_) {}
+      try { onStart(startResp.job_id); } catch (_) {}
     }
 
+    // A. 同步直接返回
     if (isSync) {
       const data = startResp.result || startResp.data || {};
       return {
         id: startResp.id, ok: true, mode: 'sync',
-        exitCode: data.exit_code, status: data.status,
-        success: data.success, output: data.output, raw: startResp
+        exitCode: data.exit_code, output: data.output, raw: startResp
       };
     }
 
+    // B. 异步轮询
     const jobId = startResp.job_id;
-    if (!jobId) throw new Error('SU exec start: missing job_id');
-
     const startTime = Date.now();
+
     while (true) {
-      if (Date.now() - startTime > overallTimeoutMs) {
-        throw new Error(`SU exec overall timeout after ${overallTimeoutMs} ms`);
-      }
+      if (Date.now() - startTime > overallTimeoutMs) throw new Error(`Timeout ${overallTimeoutMs}ms`);
       await new Promise(r => setTimeout(r, pollInterval));
 
       let stResp;
@@ -172,18 +146,22 @@ function suExec(shellCmd, options = {}) {
         }, { timeoutMs: REQUEST_TIMEOUT });
       } catch (err) { throw err; }
 
-      if (!stResp.ok) throw new Error(stResp.message || 'SU exec status failed');
+      if (!stResp.ok) throw new Error(stResp.message || 'Status failed');
 
-      if (stResp.result && stResp.result.output && typeof onProgress === 'function') {
-          try { onProgress(stResp.result.output, jobId); } catch (_) {}
+      // [新增] 传递 PID
+      if (stResp.result) {
+        const { output, pid } = stResp.result;
+        if (typeof onProgress === 'function' && (output || pid)) {
+          try { onProgress(output, jobId, pid); } catch (_) {}
+        }
       }
 
       if (stResp.state === 'done') {
         const data = stResp.result || {};
         return {
           id: stResp.id, ok: true, mode: 'async', jobId,
-          exitCode: data.exit_code, status: data.status,
-          success: data.success, output: data.output, raw: stResp
+          exitCode: data.exit_code, output: data.output, pid: data.pid,
+          raw: stResp
         };
       }
     }
@@ -191,36 +169,20 @@ function suExec(shellCmd, options = {}) {
 }
 
 function killJob(jobId) {
-  return runExclusive(async () => {
-    const resp = await sendIpcRequest({
-      type: 'exec', cmd: 'kill', args: { job_id: jobId }
-    });
+  if (!jobId) return Promise.reject(new Error('jobId required'));
+
+  // 允许在 exec 轮询期间随时 kill：不要走 runExclusive，否则会被 BUSY 拦住
+  return sendIpcRequest(
+    { type: 'exec', cmd: 'kill', args: { job_id: jobId } },
+    { timeoutMs: REQUEST_TIMEOUT * 2 }
+  ).then(resp => {
     if (!resp.ok) throw new Error(resp.message || 'kill failed');
     return resp.data || resp;
   });
 }
 
-const management = {
-  getPolicies: (opts) => wrapMgmt('get_policies', {}, opts),
-  setPolicy: (appId, pol, opts) => wrapMgmt('set_policy', { app_id: appId, policy: pol }, opts),
-  getLogs: (opts) => wrapMgmt('get_logs', {}, opts),
-  clearLogs: (opts) => wrapMgmt('clear_logs', {}, opts),
-  setAllowlist: (list, opts) => wrapMgmt('set_allowlist', { allowlist: list }, opts)
+const suIpc = {
+  exec: suExec,
+  kill: killJob
 };
-
-function wrapMgmt(cmd, args, options) {
-  return runExclusive(async () => {
-    const resp = await sendIpcRequest({ type: 'management', cmd, args }, options);
-    if (!resp.ok) throw new Error(resp.message || cmd + ' failed');
-    return resp.data;
-  });
-}
-
-suExec.exec = suExec;
-suExec.kill = killJob;
-suExec.management = management;
-suExec.getSandboxPath = () => SandboxPath;
-suExec.getQuickAppPath = () => QuickAppPath;
-suExec.getPackageName = () => packageName;
-
-export default suExec;
+export default suIpc; // 兼容

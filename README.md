@@ -10,6 +10,18 @@ Vela-Shell-Bridge 是一个为小米VelaOS穿戴设备设计的 QuickApp → Lua
 
 这是一个能让 QuickApp 执行系统命令 的受控提权模块。
 
+## 目标设备 Shell 特性（NuttX / `emulator-5554`）
+
+通过 `adb -s emulator-5554 shell` 实测：目标环境的 `sh` 更接近“精简脚本解释器”，很多常见 shell 特性不可用。
+
+- 支持：换行/`;` 分隔、stdout 重定向 `>`/`>>`、后台 `&`（命令行尾）、`$!`、`if/then/else/fi`
+- 不支持：`|`/`||`/`&&`、fd 重定向 `2>`、`grep/head/tail` 等常见工具、常见变量 `$?` `$$` `$1`...
+- 注意：`$!` 会在后续命令后变化，必须立即保存；`if` 的条件里不要写 `cmd1; cmd2`（会触发 `echo: not valid in this context`）
+
+因此异步 exec 的完成态 `exit_code` 采用 `-1` 表示“未知”（kill 为 `137`）。同步 exec 仍能返回真实 exit code。
+
+可以用 `tools/probe-shell.ps1` 复现这套探测（默认 `emulator-5554`）。
+
 ## 开发文档
 
 [Lua表盘应用文档](https://github.com/FangAiden/Lua_Watchface_Documentation)

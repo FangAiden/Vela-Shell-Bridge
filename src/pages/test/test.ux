@@ -4,141 +4,196 @@
   <div class="root">
     <time-bar />
 
-    <div class="safe-area page-anim {{ animClass }}">
-      <scroll class="box" scroll-y="true" bounces="true">
-        <text class="title">Test Page</text>
-        <text class="content">这是一个新的测试页面。</text>
+    <scroll class="safe-scroll" scroll-y="true">
+      <div class="content-wrapper">
+        <text class="title">功能测试终端</text>
         
-        <div class="btn" onclick="onTestClick">
-          <text class="btn-text">点击测试</text>
+        <div class="btn-group">
+          <div class="row">
+            <div class="btn" onclick="testSync">
+              <text class="btn-text">同步(ls)</text>
+            </div>
+            <div class="btn" onclick="testAsync">
+              <text class="btn-text">异步(Ping)</text>
+            </div>
+          </div>
+          <div class="row">
+            <div class="btn btn-warn" onclick="testSleep">
+              <text class="btn-text">Sleep(20s)</text>
+            </div>
+            <div class="btn btn-danger" onclick="stopJob">
+              <text class="btn-text">停止任务</text>
+            </div>
+          </div>
         </div>
-      </scroll>
-    </div>
+
+        <div class="log-box">
+          <text class="log-title">PID: {{currentPid || 'None'}} | Job: {{currentJobId || 'None'}}</text>
+          <scroll class="console" scroll-y="true" bounces="true">
+            <text class="console-text">{{ logContent }}</text>
+          </scroll>
+        </div>
+        
+        <div class="footer-spacer"></div>
+      </div>
+    </scroll>
   </div>
 </template>
 
 <script>
 import router from "@system.router";
 import prompt from "@system.prompt";
+import suIpc from "../su-ipc.js"; // 引用
+
+const suExec = suIpc.exec;
 
 export default {
   data: {
-    // 页面动画状态
     animClass: "",
     isLeaving: false,
+    logContent: "Ready...",
+    currentJobId: null,
+    currentPid: null, // [新增] 显示 PID
+    isRunning: false
   },
 
   onShow() {
     this.$broadcast("page-on-show", {});
-    // 进入动画
     this.isLeaving = false;
     this.animClass = "";
-    setTimeout(() => {
-      this.animClass = "page-enter";
-    }, 0);
+    setTimeout(() => { this.animClass = "page-enter"; }, 0);
   },
 
-  // 处理返回逻辑（带动画）
   onBackPress() {
     if (this.isLeaving) return true;
     this.isLeaving = true;
     this.animClass = "page-leave";
-    setTimeout(() => {
-      router.back();
-    }, 180);
+    setTimeout(() => { router.back(); }, 180);
     return true;
   },
 
-  onTestClick() {
-    prompt.showToast({
-      message: "测试按钮被点击",
-    });
+  appendLog(msg) {
+    const time = new Date().toTimeString().split(' ')[0];
+    this.logContent = `[${time}] ${msg}\n` + this.logContent;
   },
+
+  setLog(fullText) {
+    this.logContent = fullText;
+  },
+
+  // 测试 1: 同步
+  async testSync() {
+    if (this.isRunning) return prompt.showToast({ message: "Busy" });
+    this.logContent = ">>> Sync: ls -l /\n";
+    this.isRunning = true;
+    try {
+      const res = await suExec("ls -l /", { sync: true });
+      this.appendLog(`[DONE] Code: ${res.exitCode}\nOut:\n${res.output}`);
+    } catch (e) {
+      this.appendLog(`[ERR] ${e.message}`);
+    } finally {
+      this.isRunning = false;
+    }
+  },
+
+  // 测试 2: 异步 Ping
+  async testAsync() {
+    if (this.isRunning) return prompt.showToast({ message: "Busy" });
+    this.logContent = ">>> Async: ping -c 3 127.0.0.1\n";
+    this.isRunning = true;
+    this.currentJobId = null;
+    this.currentPid = null;
+    try {
+      const res = await suExec("ping -c 3 127.0.0.1", {
+        onStart: (id) => {
+          this.currentJobId = id;
+          this.appendLog(`[START] Job: ${id}`);
+        },
+        onProgress: (output, jobId, pid) => {
+          this.setLog(output);
+          if (pid) this.currentPid = pid; // 更新 PID
+        }
+      });
+      const codeText = (res.exitCode === -1 || res.exitCode === null || res.exitCode === undefined)
+        ? "UNKNOWN"
+        : String(res.exitCode);
+      this.appendLog(`\n[DONE] Code: ${codeText}`);
+    } catch (e) {
+      this.appendLog(`[ERR] ${e.message}`);
+    } finally {
+      this.isRunning = false;
+    }
+  },
+
+  // 测试 3: Sleep 机制测试 (替代 Ping)
+  // 如果 Ping 秒退，请用这个测试。如果 Sleep 正常等待，说明 Ping 命令本身报错。
+  async testSleep() {
+    if (this.isRunning) return prompt.showToast({ message: "Busy" });
+    this.logContent = ">>> Sleep 20s (Test Kill)...\n";
+    this.isRunning = true;
+    this.currentJobId = null;
+    this.currentPid = null;
+    try {
+      const res = await suExec("sleep 20", {
+        onStart: (id) => {
+          this.currentJobId = id;
+          this.appendLog(`[START] Job: ${id}`);
+        },
+        onProgress: (output, jobId, pid) => {
+          // sleep 没有输出，但 PID 应该会更新
+          if (pid) {
+              this.currentPid = pid;
+              // this.appendLog(`Running PID: ${pid}`); 
+          }
+        }
+      });
+
+      if (res && res.exitCode === 137) {
+        this.appendLog(`\n[STOPPED] Killed (exit=137)`);
+      } else if (res && (res.exitCode === -1 || res.exitCode === null || res.exitCode === undefined)) {
+        this.appendLog(`\n[DONE] Finished (exit=UNKNOWN)`);
+      } else {
+        this.appendLog(`\n[DONE] Finished (exit=${res.exitCode})`);
+      }
+    } catch (e) {
+      this.appendLog(`[INFO] Stopped: ${e.message}`);
+    } finally {
+      this.isRunning = false;
+    }
+  },
+
+  // 测试 4: Kill
+  async stopJob() {
+    if (!this.currentJobId) return prompt.showToast({ message: "No Job" });
+    try {
+      this.appendLog(`\n[KILL] Killing Job ${this.currentJobId}...`);
+      await suIpc.kill(this.currentJobId);
+    } catch (e) {
+      this.appendLog(`[ERR] Kill fail: ${e.message}`);
+    }
+  }
 };
 </script>
 
 <style>
-/* 基础布局 */
-.root {
-  width: 100%;
-  height: 100%;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: stretch;
-  background-color: #000000;
-}
-
-.safe-area {
-  flex: 1;
-  width: 100%;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-
-.box {
-  width: 80%;
-  height: 80%;
-  flex-direction: column;
-  align-items: center;
-}
-
-.title {
-  font-size: 36px;
-  color: #ffffff;
-  font-weight: bold;
-  margin-bottom: 20px;
-}
-
-.content {
-  font-size: 24px;
-  color: #888888;
-  margin-bottom: 40px;
-}
-
-/* 按钮样式 */
-.btn {
-  width: 100%;
-  height: 80px;
-  background-color: #333333;
-  border-radius: 40px;
-  justify-content: center;
-  align-items: center;
-}
-
-.btn-text {
-  color: #ffffff;
-  font-size: 28px;
-}
-
-/* 页面进出动画 */
-.page-anim {
-  opacity: 0;
-  transform: scale(0.8);
-  transform-origin: center center;
-}
-
-.page-enter {
-  animation-name: pageIn;
-  animation-duration: 220ms;
-  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
-  animation-iteration-count: 1;
-}
-
-.page-leave {
-  animation-name: pageOut;
-  animation-duration: 180ms;
-  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
-  animation-iteration-count: 1;
-}
-
-@keyframes pageIn {
-  0% { opacity: 0; transform: scale(0.8); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-@keyframes pageOut {
-  0% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.8); }
-}
+.root { width: 100%; height: 100%; flex-direction: column; background-color: #000000; }
+.safe-scroll { flex: 1; width: 100%; flex-direction: column; align-items: center; }
+.content-wrapper { width: 320px; flex-direction: column; padding-top: 10px; }
+.title { font-size: 32px; color: #ffffff; font-weight: bold; margin-bottom: 20px; text-align: center; }
+.btn-group { flex-direction: column; width: 100%; margin-bottom: 15px; }
+.row { flex-direction: row; justify-content: space-between; margin-bottom: 15px; }
+.btn { width: 155px; height: 70px; background-color: #333333; border-radius: 16px; justify-content: center; align-items: center; }
+.btn-warn { background-color: #bfa128; }
+.btn-danger { background-color: #8b2828; }
+.btn-text { color: #ffffff; font-size: 24px; }
+.log-box { width: 100%; height: 220px; flex-direction: column; background-color: #111111; border-radius: 12px; padding: 10px; border: 1px solid #333333; }
+.log-title { font-size: 20px; color: #666666; margin-bottom: 5px; }
+.console { flex: 1; width: 100%; }
+.console-text { font-size: 20px; color: #00ff00; font-family: monospace; }
+.footer-spacer { height: 80px; width: 100%; }
+.page-anim { opacity: 0; transform: scale(0.95); }
+.page-enter { animation-name: pageIn; animation-duration: 200ms; animation-fill-mode: forwards; }
+.page-leave { animation-name: pageOut; animation-duration: 150ms; animation-fill-mode: forwards; }
+@keyframes pageIn { 0% { opacity: 0; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes pageOut { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.95); } }
 </style>

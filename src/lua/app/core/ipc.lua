@@ -133,7 +133,9 @@ local function handle_exec(app_id, req)
             return error_response(req.id, "BAD_REQUEST", "job_id required for kill")
         end
         -- 调用 exec.lua 的 kill_job
-        return execmod.kill_job(args.job_id)
+        local r = execmod.kill_job(args.job_id)
+        r.id = req.id
+        return r
     end
 
     -- 下面是 exec 逻辑
