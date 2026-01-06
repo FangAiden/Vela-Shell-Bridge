@@ -185,4 +185,40 @@ const suIpc = {
   exec: suExec,
   kill: killJob
 };
-export default suIpc; // 兼容
+
+// ---------------------------------------------------------
+// Management：管理类命令（get_logs / clear_logs / policies ...）
+// ---------------------------------------------------------
+function management(cmd, args = {}, options = {}) {
+  if (!cmd || typeof cmd !== 'string') return Promise.reject(new Error('cmd required'));
+  return sendIpcRequest(
+    { type: 'management', cmd, args: args || {} },
+    { timeoutMs: options.timeoutMs || REQUEST_TIMEOUT }
+  );
+}
+
+async function getLogs(options = {}) {
+  const resp = await management('get_logs', {}, options);
+  if (!resp || resp.ok !== true) throw new Error((resp && resp.message) || 'get_logs failed');
+  return resp.data;
+}
+
+async function clearLogs(options = {}) {
+  const resp = await management('clear_logs', {}, options);
+  if (!resp || resp.ok !== true) throw new Error((resp && resp.message) || 'clear_logs failed');
+  return resp.data;
+}
+
+suIpc.management = management;
+suIpc.getLogs = getLogs;
+suIpc.clearLogs = clearLogs;
+
+// 兼容两种用法：
+// - import suExec from "../su-ipc"; suExec("ls")
+// - import suIpc from "../su-ipc.js"; suIpc.exec("ls")
+function suExecCompat(cmd, options) {
+  return suExec(cmd, options);
+}
+Object.assign(suExecCompat, suIpc);
+
+export default suExecCompat;

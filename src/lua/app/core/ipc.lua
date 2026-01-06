@@ -99,11 +99,18 @@ local function handle_management(app_id, req)
         return ok_response(req.id, { ok = true })
 
     elseif cmd == "get_logs" then
-        local logs = logmod.get_logs()
-        return ok_response(req.id, logs)
+        local stats = logmod.get_logs()
+        local exec_logs = {}
+        if logmod.get_exec_logs then
+            exec_logs = logmod.get_exec_logs()
+        end
+        return ok_response(req.id, { stats = stats, exec = exec_logs })
 
     elseif cmd == "clear_logs" then
         logmod.clear_logs()
+        if logmod.clear_exec_logs then
+            logmod.clear_exec_logs()
+        end
         return ok_response(req.id, { ok = true })
 
     elseif cmd == "set_allowlist" then
@@ -135,6 +142,9 @@ local function handle_exec(app_id, req)
         -- 调用 exec.lua 的 kill_job
         local r = execmod.kill_job(args.job_id)
         r.id = req.id
+        if logmod.record_exec_kill then
+            pcall(logmod.record_exec_kill, app_id, args.job_id, r)
+        end
         return r
     end
 
@@ -148,6 +158,9 @@ local function handle_exec(app_id, req)
     if job_id and job_id ~= "" then
         local r = execmod.poll_job(job_id)
         r.id = req.id
+        if r and r.state == "done" and logmod.update_exec_job then
+            pcall(logmod.update_exec_job, job_id, r)
+        end
         return r
     end
 
@@ -163,17 +176,24 @@ local function handle_exec(app_id, req)
         local allowed, reason = policy.check_exec_allowed(app_id)
         if not allowed then
             local code = (reason == "DENY") and "NO_PERMISSION" or "NEED_PERMISSION"
-            return error_response(
+            local resp = error_response(
                 req.id,
                 code,
                 "App " .. app_id .. " is not allowed to execute shell (reason: " .. tostring(reason) .. ")"
             )
+            if logmod.record_exec_denied then
+                pcall(logmod.record_exec_denied, app_id, shell_cmd, resp)
+            end
+            return resp
         end
     end
 
     -- 启动任务 (传入 is_sync 参数)
     local r = execmod.start_job(shell_cmd, is_sync)
     r.id = req.id
+    if logmod.record_exec_start then
+        pcall(logmod.record_exec_start, app_id, shell_cmd, r)
+    end
     return r
 end
 
@@ -258,7 +278,14 @@ function M.run_once()
     end
 
     policy.save_if_dirty()
-    logmod.save_if_dirty()
+    if logmod.save_if_any_dirty then
+        logmod.save_if_any_dirty()
+    elseif logmod.save_if_dirty then
+        logmod.save_if_dirty()
+        if logmod.save_exec_if_dirty then
+            logmod.save_exec_if_dirty()
+        end
+    end
     allowlist.save_if_dirty()
 end
 
