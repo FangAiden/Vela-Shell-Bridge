@@ -16,13 +16,45 @@
       "name": "system.file"
     },
     {
+      "name": "system.storage"
+    },
+    {
       "name": "system.device"
+    },
+    {
+      "name": "system.network"
+    },
+    {
+      "name": "system.brightness"
+    },
+    {
+      "name": "system.vibrator"
+    },
+    {
+      "name": "system.geolocation"
+    },
+    {
+      "name": "system.sensor"
+    },
+    {
+      "name": "system.battery"
+    },
+    {
+      "name": "system.volume"
+    },
+    {
+      "name": "system.configuration"
     },
     {
       "name": "system.prompt"
     },
     {
       "name": "system.app"
+    }
+  ],
+  "permissions": [
+    {
+      "name": "hapjs.permission.LOCATION"
     }
   ],
   "config": {
