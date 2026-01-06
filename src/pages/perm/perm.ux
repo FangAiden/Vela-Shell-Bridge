@@ -4,20 +4,22 @@
 <template>
 	<div class="root">
 		<stack class="stack">
-			<!-- ⭐ 结构不变，只在 class 里拼上 animClass -->
+			<!-- ? 结构不变，只在 class 里拼上 animClass -->
 			<scroll class="box {{ animClass }}" scroll-y="true" bounces="true">
 				<div class="header">
 					<image class="shield-icon" src="/resources/image/perm.png"></image>
 					<text class="title">授权管理</text>
 					<text class="subtitle">管理应用执行权限</text>
 				</div>
-				<div class="item-container" for="{{ permList }}">
+
+				<div class="item-container" for="{{ permList }}" tid="index">
 					<item
 						title="{{ $item.title }}"
 						image="{{ $item.image }}"
 						count="{{ $item.count }}"
 						time="{{ $item.time }}"
 						index="{{ $item.index }}"
+						checked="{{ $item.checked }}"
 						onswitch-change="onSwitchChange"
 					/>
 				</div>
@@ -33,56 +35,65 @@
 <script>
 import prompt from "@system.prompt";
 import router from "@system.router";
-import suExec from "../su-ipc";
+import app from "@system.app";
+import suIpc from "../su-ipc.js";
+
+const QUICKAPP_ABS_BASE = "/data/files/";
+
+function pad2(n) {
+	const s = String(n == null ? "" : n);
+	return s.length >= 2 ? s : `0${s}`;
+}
+
+function shQuote(s) {
+	return `"${String(s == null ? "" : s).replace(/"/g, '\\"')}"`;
+}
+
+function parseIcon(raw) {
+	if (typeof raw !== "string") return null;
+	let s = raw.trim();
+	if (!s) return null;
+
+	if (s.startsWith("internal://files/")) {
+		s = s.slice("internal://files/".length);
+	}
+
+	if (s.startsWith("/")) {
+		// apps.json 的 icon 有时会写成 "/resources/xx.png" 这种“应用内绝对路径”，这里按相对路径处理；
+		// 只有像 "/data/..." 这种才当做真正的系统绝对路径。
+		const isSystemAbs =
+			s.startsWith("/data/") ||
+			s.startsWith("/tmp/") ||
+			s.startsWith("/proc/") ||
+			s.startsWith("/dev/") ||
+			s.startsWith("/system/");
+		if (isSystemAbs) {
+			const fileName = s.split("/").pop();
+			if (!fileName) return null;
+			return { abs: s, rel: "", fileName };
+		}
+		s = s.replace(/^\/+/, "");
+	}
+
+	s = s.replace(/^\/+/, "");
+	if (!s || s.includes("..")) return null;
+	const fileName = s.split("/").pop();
+	if (!fileName) return null;
+	return { abs: "", rel: s, fileName };
+}
 
 export default {
 	data: {
-		permList: [
-			{
-				title: "授权管理",
-				image: "/resources/image/perm.png",
-				count: "12",
-				time: "17:30",
-				index: "0",
-			},
-			{
-				title: "授权管理",
-				image: "/resources/image/perm.png",
-				count: "12",
-				time: "17:30",
-				index: "1",
-			},
-			{
-				title: "授权管理",
-				image: "/resources/image/perm.png",
-				count: "12",
-				time: "17:30",
-				index: "2",
-			},
-			{
-				title: "授权管理",
-				image: "/resources/image/perm.png",
-				count: "12",
-				time: "17:30",
-				index: "3",
-			},
-			{
-				title: "授权管理",
-				image: "/resources/image/perm.png",
-				count: "12",
-				time: "17:30",
-				index: "4",
-			},
-			{
-				title: "授权管理",
-				image: "/resources/image/perm.png",
-				count: "12",
-				time: "17:30",
-				index: "5",
-			},
-		],
+		permList: [],
+		allowlist: [],
+		policies: {},
+		stats: {},
+		appMeta: {},
+		selfAppId: "",
+		isLoading: false,
+		isUpdating: false,
 
-		// ⭐ 动画状态
+		// ? 动画状态
 		animClass: "",
 		isLeaving: false,
 	},
@@ -97,58 +108,189 @@ export default {
 			this.animClass = "page-enter";
 		}, 0);
 
-		this.getAppsList();
+		await this.refresh();
 	},
 
-	async getAppsList() {
-		const tmpBase = `${suExec.getQuickAppPath()}${suExec.getPackageName()}/tmp`;
+	getPolicyFor(appId) {
+		const info = this.policies && this.policies[appId];
+		const p = info && info.policy;
+		if (p === "allow" || p === "deny" || p === "ask" || p === "allow_once") return p;
+		return "ask";
+	},
 
-		suExec.getSandboxPath();
-		const res = await suExec("cat /data/apps.json");
-		const apps = JSON.parse(res.output);
+	formatHhMmFromUnixSec(ts) {
+		const n = Number(ts);
+		if (!n || !isFinite(n)) return "--:--";
+		try {
+			const d = new Date(n * 1000);
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		} catch (_) {
+			return "--:--";
+		}
+	},
 
-		// await suExec(`rm -r ${tmpBase}`, { timeoutMs: 5000 })
-
-		for (let i = 0; i < apps.InstalledApps.length; i++) {
-			console.log(apps.InstalledApps.length);
-			const element = apps.InstalledApps[i];
-
-			const icon = element.icon.split("/").pop();
-
-			console.log(
-				`mkdir -p ${suExec.getQuickAppPath()}${suExec.getPackageName()}/tmp/${
-					element.package
-				}`
-			);
-
+	async getSelfAppId() {
+		if (this.selfAppId) return this.selfAppId;
+		const pkg = await new Promise((resolve) => {
 			try {
-				const a = await suExec(
-					`mkdir -p ${suExec.getQuickAppPath()}${suExec.getPackageName()}/tmp/${
-						element.package
-					}`
-				);
-				console.log(a);
-				
-			} catch (error) {
-				console.log(error);
+				app.getInfo({
+					success: (info) => resolve((info && (info.packageName || info.package)) || ""),
+					fail: () => resolve(""),
+				});
+			} catch (_) {
+				resolve("");
 			}
-			
-			console.log('进入cp');
-			
-			await suExec(`cp ${suExec.getQuickAppPath()}${element.package}/${element.icon} ${suExec.getQuickAppPath()}${suExec.getPackageName()}/tmp/${element.package}/`,{ timeoutMs: 500 })
-			
-			this.permList.push({
-				title: element.names[0].value,
-				image: `/tmp/${element.package}/${icon}`,
-				count: "0",
-				time: "00:00",
-				index: element.package,
+		});
+		this.selfAppId = pkg || "";
+		return this.selfAppId;
+	},
+
+	async tryLoadAppsMeta() {
+		try {
+			const res = await suIpc.exec("cat /data/apps.json", { sync: true, timeoutMs: 1500 });
+			if (!res || res.exitCode !== 0 || !res.output) return {};
+			const obj = JSON.parse(res.output);
+			const list = obj && obj.InstalledApps;
+			if (!Array.isArray(list)) return {};
+
+			const meta = {};
+			list.forEach((it) => {
+				const id = it && it.package;
+				if (!id) return;
+				const names = it.names;
+				const name =
+					Array.isArray(names) && names[0] && names[0].value ? String(names[0].value) : "";
+				const icon = parseIcon(it && it.icon);
+				meta[id] = { name, icon };
 			});
+			return meta;
+		} catch (_) {
+			return {};
+		}
+	},
+
+	async prepareIcons(appIds, meta, selfId) {
+		if (!selfId) return {};
+		if (!Array.isArray(appIds) || !appIds.length) return {};
+
+		const baseDestAbs = `${QUICKAPP_ABS_BASE}${selfId}/perm_icons`;
+		const lines = [`mkdir -p ${shQuote(baseDestAbs)}`];
+
+		const iconMap = {};
+		for (let i = 0; i < appIds.length; i++) {
+			const appId = appIds[i];
+			if (!appId) continue;
+			const m = meta && meta[appId] ? meta[appId] : null;
+			const icon = m && m.icon ? m.icon : null;
+			if (!icon || !icon.fileName) continue;
+
+			const srcAbs = icon.abs
+				? icon.abs
+				: `${QUICKAPP_ABS_BASE}${appId}/${icon.rel}`;
+
+			const destDirAbs = `${baseDestAbs}/${appId}`;
+			const destAbs = `${destDirAbs}/${icon.fileName}`;
+
+			lines.push(`mkdir -p ${shQuote(destDirAbs)}`);
+			lines.push(`if [ -f ${shQuote(destAbs)} ]`);
+			lines.push("then");
+			lines.push(`  echo ICON_OK:${appId}:${icon.fileName}`);
+			lines.push("else");
+			lines.push(`  if [ -f ${shQuote(srcAbs)} ]`);
+			lines.push("  then");
+			lines.push(`    if cp ${shQuote(srcAbs)} ${shQuote(destAbs)}`);
+			lines.push("    then");
+			lines.push(`      echo ICON_OK:${appId}:${icon.fileName}`);
+			lines.push("    fi");
+			lines.push("  fi");
+			lines.push("fi");
 		}
 
-		console.log(apps);
+		if (lines.length <= 1) return iconMap;
+		try {
+			const res = await suIpc.exec(lines.join("\n"), { sync: true, timeoutMs: 8000 });
+			const out = res && typeof res.output === "string" ? res.output : "";
+			out.split(/\r?\n/).forEach((line) => {
+				const t = String(line || "").trim();
+				if (!t.startsWith("ICON_OK:")) return;
+				const parts = t.split(":");
+				if (parts.length < 3) return;
+				const appId = parts[1];
+				const fileName = parts.slice(2).join(":");
+				if (!appId || !fileName) return;
+				iconMap[appId] = fileName;
+			});
+		} catch (_) {}
+		return iconMap;
 	},
-	// ⭐ 返回时：先播放退出动画，再真正 back
+
+	async refresh() {
+		if (this.isLoading) return;
+		this.isLoading = true;
+		try {
+			const selfId = await this.getSelfAppId();
+
+			const [apps, allowlist, policies, logs, meta] = await Promise.all([
+				suIpc.scanApps(),
+				suIpc.getAllowlist(),
+				suIpc.getPolicies(),
+				suIpc.getLogs(),
+				this.tryLoadAppsMeta(),
+			]);
+
+			this.allowlist = Array.isArray(allowlist) ? allowlist : [];
+			this.policies = policies || {};
+			this.stats = logs && logs.stats ? logs.stats : {};
+			this.appMeta = meta || {};
+
+			const appIds = (Array.isArray(apps) ? apps : []).filter((id) => id && id !== selfId);
+			const iconMap = await this.prepareIcons(appIds, this.appMeta, selfId);
+
+			const allowSet = new Set(this.allowlist || []);
+
+			const list = appIds
+				.map((appId) => {
+					const st = this.stats && this.stats[appId] ? this.stats[appId] : {};
+					const count = st && st.count != null ? String(st.count) : "0";
+					const lastTs = st && st.last_ts != null ? Number(st.last_ts) : 0;
+					const policy = this.getPolicyFor(appId);
+					const isAllowed = allowSet.has(appId) && policy === "allow";
+					const m = this.appMeta && this.appMeta[appId] ? this.appMeta[appId] : {};
+					const title = m && m.name ? m.name : appId;
+					const iconFile = iconMap && iconMap[appId] ? iconMap[appId] : "";
+					const image = iconFile
+						? `internal://files/perm_icons/${appId}/${iconFile}`
+						: "/resources/image/perm.png";
+
+					return {
+						title,
+						image,
+						count,
+						time: this.formatHhMmFromUnixSec(lastTs),
+						index: appId,
+						checked: isAllowed,
+					};
+				})
+				.sort((a, b) => {
+					if (a.checked !== b.checked) return a.checked ? -1 : 1;
+					const ca = parseInt(a.count, 10) || 0;
+					const cb = parseInt(b.count, 10) || 0;
+					if (ca !== cb) return cb - ca;
+					return String(a.index).localeCompare(String(b.index));
+				});
+
+			this.permList = list;
+		} catch (e) {
+			prompt.showToast({
+				message: e && e.message ? e.message : "加载失败",
+				duration: 900,
+			});
+		} finally {
+			this.isLoading = false;
+		}
+	},
+
+	// ? 返回时：先播放退出动画，再真正 back
 	onBackPress() {
 		if (this.isLeaving) {
 			return true; // 已在退场，拦截默认返回
@@ -163,11 +305,42 @@ export default {
 		return true; // 自己处理返回
 	},
 
-	onSwitchChange(evt) {
-		prompt.showToast({
-			message: "授权管理：" + evt.detail.index + " " + evt.detail.switchValue,
-			duration: 800,
-		});
+	async onSwitchChange(evt) {
+		if (this.isUpdating || this.isLoading) return;
+		const appId = evt && evt.detail ? evt.detail.index : "";
+		const enabled = !!(evt && evt.detail && evt.detail.switchValue);
+		if (!appId) return;
+
+		this.isUpdating = true;
+		try {
+			const currentAllow = Array.isArray(this.allowlist) ? this.allowlist.slice() : [];
+			const allowSet = new Set(currentAllow);
+
+			if (enabled) {
+				allowSet.add(appId);
+				await suIpc.setAllowlist(Array.from(allowSet));
+				await suIpc.setPolicy(appId, "allow");
+			} else {
+				await suIpc.setPolicy(appId, "deny");
+				allowSet.delete(appId);
+				await suIpc.setAllowlist(Array.from(allowSet));
+			}
+
+			prompt.showToast({
+				message: enabled ? "已授权" : "已取消授权",
+				duration: 700,
+			});
+
+			await this.refresh();
+		} catch (e) {
+			prompt.showToast({
+				message: e && e.message ? e.message : "操作失败",
+				duration: 900,
+			});
+			await this.refresh();
+		} finally {
+			this.isUpdating = false;
+		}
 	},
 };
 </script>
@@ -186,7 +359,7 @@ export default {
 	align-items: center;
 }
 
-/* ⭐ 给 box 加上初始缩放和透明度，作为动画起点 */
+/* ? 给 box 加上初始缩放和透明度，作为动画起点 */
 .box {
 	/* 原有的布局属性保留在上面那段 .box,stack 已经设置了 flex-direction 等 */
 	opacity: 0;

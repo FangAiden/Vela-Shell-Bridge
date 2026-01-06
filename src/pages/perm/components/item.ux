@@ -8,7 +8,7 @@
 			<text class="subtitle">请求 {{ count }} 次 · 最近 {{ time }}</text>
 		</div>
 		<switch
-			checked="{{ switchValue }}"
+			checked="{{ checked }}"
 			class="switch"
 			@change="onSwitchChange"
 		></switch>
@@ -16,15 +16,11 @@
 </template>
 <script>
 export default {
-	props: ["title", "image", "count", "time", "index"],
-	data() {
-		return {
-			title: this.title,
-			image: this.image,
-			count: this.count,
-			time: this.time,
-            index: this.index,
-		};
+	props: ["title", "image", "count", "time", "index", "checked"],
+	handleClick() {
+		this.$emit("itemClick", {
+			index: this.index,
+		});
 	},
 	onSwitchChange(e) {
 		this.$emit("switchChange", {

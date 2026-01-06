@@ -7,6 +7,7 @@ local fs        = require("app.util.fs_util")
 local policy    = require("app.domain.policy")
 local logmod    = require("app.domain.log")
 local allowlist = require("app.domain.allowlist")
+local appscan   = require("app.domain.app_scan")
 local execmod   = require("app.domain.exec")
 
 local JSON = _G.JSON or require("app.util.json_util")
@@ -88,6 +89,21 @@ local function handle_management(app_id, req)
     if cmd == "get_policies" then
         local data = policy.get_all_policies()
         return ok_response(req.id, data)
+
+    elseif cmd == "get_allowlist" then
+        local m = allowlist.get_all() or {}
+        local list = {}
+        for id, enabled in pairs(m) do
+            if enabled and type(id) == "string" and id ~= "" then
+                list[#list + 1] = id
+            end
+        end
+        table.sort(list)
+        return ok_response(req.id, { allowlist = list })
+
+    elseif cmd == "scan_apps" then
+        local apps = appscan.scan_all_apps(QUICKAPP_BASE)
+        return ok_response(req.id, { apps = apps })
 
     elseif cmd == "set_policy" then
         local app_id2 = args.app_id

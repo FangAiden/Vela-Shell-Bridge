@@ -70,12 +70,12 @@ end
 
 function M.set_policy(app_id, policy)
     if type(app_id) ~= "string" or app_id == "" then
-        return
+        return false, "app_id required"
     end
 
     local p = normalize_policy(policy)
     if not p then
-        return
+        return false, "invalid policy"
     end
 
     local info = M.data[app_id]
@@ -86,6 +86,8 @@ function M.set_policy(app_id, policy)
 
     info.policy = p
     M.dirty = true
+
+    return true
 end
 
 function M.check_exec_allowed(app_id)
