@@ -1,20 +1,22 @@
 <template>
-  <div class="full" style="position: absolute">
-    <div class="column HVcenter full" if="{{!this.hide}}" style="background-color: black">
+  <div class="full" style="position: absolute; left: 0; top: 0;">
+    <div class="column HVcenter full" if="{{ hide != true && hide != 'true' }}" style="background-color: black">
       <!-- 顶部功能区 -->
       <div class="func-area" style="width: 80%; height: {{funcAreaHeight}}%"></div>
       <!-- 输入区 -->
       <div class="input-area" style="width: 75%; height: {{inputAreaHeight}}%">
         <!-- 文本框 -->
-        <div style="width: 85%">
-          <div style="text-overflow: ellipsis">
-            <text>{{ textbox }}</text>
+        <div class="input-text-wrap">
+          <div class="input-text-row">
+            <text class="input-text lines-1">{{ displayText || textbox }}</text>
+            <!-- 光标 -->
+            <image-animator class="animator" id="animator" images="{{frames}}" duration="500ms"></image-animator>
           </div>
-          <!-- 光标 -->
-          <image-animator class="animator" id="animator" images="{{frames}}" duration="500ms"></image-animator>
         </div>
         <!-- 删除键 仅在26键时显示 -->
-        <image style="width: 20%" src="/common/icon_del.png" if="{{keyboardLayout == 'QWERTY'}}" @click="press('del')" />
+        <div class="input-del" if="{{ keyboardLayout == 'QWERTY' }}" @click="press('del')">
+          <image class="input-del-icon" src="/common/icon_del.png" />
+        </div>
       </div>
       <!-- 候选词区 -->
       <div class="candidate-word-area HVcenter"
@@ -559,25 +561,26 @@ export default {
   data: {
     frames: [
       {
-        src: "/common/VelaIME/common/0.png"
+        src: "/common/0.png"
       },
       {
-        src: "/common/VelaIME/common/1.png"
+        src: "/common/1.png"
       }
     ],  //光标
     btnLine1: ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"], //26键第一行
     btnLine2: ["a", "s", "d", "f", "g", "h", "j", "k", "l"],  //26键第二行
     btnLine3: ["z", "x", "c", "v", "b", "n", "m"],  //26键第三行
-    capsicon: "/common/VelaIME/common/ic_shift.png",  //Shift按钮
+    capsicon: "/common/ic_shift.png",  //Shift按钮
     keyboard: "英", //键盘字符类型
     keyboardLayout: "QWERTY", //键盘布局
     textbox: "",  //文本框内容
+    displayText: "",
     status: 0,  //页面显示状态
     funcAreaHeight: "",
     inputAreaHeight: "",
     candidateWordAreaHeight: "",
     keyboardAreaHeight: "",
-    expandBtn: "/common/VelaIME/common/ic_right.png", //展开按钮(未完工)
+    expandBtn: "/common/ic_right.png", //展开按钮(未完工)
     candidateWordList: [],  //候选词列表
     pinyinSelector: [], //拼音选择器
     nineKeyList: [
@@ -600,11 +603,27 @@ export default {
     tmpPinyin: [] //存储9键按键组合
   },
   //数据准备完成时
+  normalizeDisplayText(text) {
+    const raw = String(text == null ? "" : text);
+    const oneLine = raw.replace(/\r?\n/g, " ");
+    if (!oneLine) return "";
+    const maxLen = 28;
+    if (oneLine.length <= maxLen) return oneLine;
+    return "..." + oneLine.slice(-maxLen);
+  },
+  setTextbox(text) {
+    const next = String(text == null ? "" : text);
+    this.textbox = next;
+    this.displayText = this.normalizeDisplayText(next);
+  },
+  resetComposition() {
+    this.candidateWordList = [];
+    this.pinyinSelector = [];
+    this.tmpPinyin = [];
+  },
   onInit() {
-    this.textbox = this.inputbox
-    if (this.textbox == undefined) {
-      this.textbox = ""
-    }
+    const initText = (this.inputbox == undefined) ? "" : this.inputbox
+    this.setTextbox(initText)
     this.changeHeightModel()
     this.initDict()
   },
@@ -674,17 +693,18 @@ export default {
   toggleCase(arr) {
     return arr.map((element) => {
       if (element === element.toUpperCase()) {
-        this.capsicon = "/common/VelaIME/common/ic_shift.png"
+        this.capsicon = "/common/ic_shift.png"
         return element.toLowerCase()
       } else {
-        this.capsicon = "/common/VelaIME/common/ic_caps_lock.png"
+        this.capsicon = "/common/ic_caps_lock.png"
         return element.toUpperCase()
       }
     })
   },
   //26键下字符键盘与拼音键盘切换
-  toggleSymbolEn(keyboard) {
-    if (keyboard == "英") {
+  toggleSymbolEn(keyboard, forceSymbol) {
+    const useSymbol = (forceSymbol === undefined) ? (keyboard == "英") : forceSymbol
+    if (useSymbol) {
       this.btnLine1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
       this.btnLine2 = ["@", "#", "$", "_", "&", "+", "-", "(", ")", "/"]
       this.btnLine3 = ["*", '"', "'", ":", ";", "!", "?"]
@@ -706,12 +726,12 @@ export default {
     //通用按键事件
     switch (key) {
       case "enter":
-        this.textbox += "\n"
+        this.setTextbox(this.textbox + "\n")
         return
       case "left":
         switch (this.keyboard) {
           case "英":
-            this.toggleSymbolEn(this.keyboard)
+            this.toggleSymbolEn(this.keyboard, true)
             this.keyboard = "符号英"
             this.keyboardLayout = "QWERTY"
             break
@@ -720,11 +740,13 @@ export default {
             this.keyboardLayout = "9"
             break
           case "中":
+            this.toggleSymbolEn(this.keyboard, false)
             this.keyboard = "英"
             this.keyboardLayout = "QWERTY"
             break
         }
         this.changeHeightModel()
+        this.resetComposition()
         return
       case "right":
         switch (this.keyboard) {
@@ -733,23 +755,25 @@ export default {
             this.keyboardLayout = "9"
             break
           case "符号英":
-            this.toggleSymbolEn(this.keyboard)
+            this.toggleSymbolEn(this.keyboard, false)
             this.keyboard = "英"
             this.keyboardLayout = "QWERTY"
             break
           case "中":
+            this.toggleSymbolEn(this.keyboard, true)
             this.keyboard = "符号英"
             this.keyboardLayout = "QWERTY"
             break
         }
         this.changeHeightModel()
+        this.resetComposition()
         return
     }
     //26键按键事件
     if (this.keyboardLayout == "QWERTY") {
       switch (key) {
         case "del":
-          this.textbox = this.textbox.substring(0, this.textbox.length - 1)
+          this.setTextbox(this.textbox.slice(0, -1))
           break
         case "shift":
           if (this.keyboard == "英") {
@@ -765,7 +789,7 @@ export default {
           break
         default:
           if (this.textbox.length < 80) {
-            this.textbox += key
+            this.setTextbox(this.textbox + key)
           }
           break
       }
@@ -776,15 +800,24 @@ export default {
         case "del":
           //拼音选择器为空时，删除文本框字符
           if (this.pinyinSelector.length == 0) {
-            this.textbox = this.textbox.substring(0, this.textbox.length - 1)
+            this.setTextbox(this.textbox.slice(0, -1))
           }
 
-          this.tmpPinyin.pop()
+          if (this.tmpPinyin.length > 0) {
+            this.tmpPinyin.pop()
+          }
           //按键组合为空时，清空拼音选择器
           if (this.tmpPinyin.length == 0) {
             this.pinyinSelector = []
+            this.candidateWordList = []
+          } else {
+            this.getPossiblePinyinCombinations(this.tmpPinyin)
+            if (this.pinyinSelector.length > 0) {
+              this.candidateWordList = this.getHanzi(this.pinyinSelector[0])[0]
+            } else {
+              this.candidateWordList = []
+            }
           }
-          this.getPossiblePinyinCombinations(this.tmpPinyin)
           break
         case "send":
           //切换键盘显示状态
@@ -798,16 +831,13 @@ export default {
           }
           //候选词列表
           if (initiator == 1) {
-            this.textbox += key
-            this.candidateWordList = []
-            this.tmpPinyin = []
-            this.pinyinSelector = []
+            this.setTextbox(this.textbox + key)
+            this.resetComposition()
             return
           }
           //9键键盘
           if (this.tmpPinyin.length < 6) {
             this.tmpPinyin.push(key.toLowerCase())
-            console.log(this.pinyinSelector)
             this.getPossiblePinyinCombinations(this.tmpPinyin)
             if (this.pinyinSelector.length > 0) {
               this.candidateWordList = this.getHanzi(this.pinyinSelector[0])[0]
@@ -853,10 +883,100 @@ export default {
 
 <style>
 .column {
+  display: flex;
   flex-direction: column;
 }
 
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.input-area {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+
+.input-text-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.input-text-row {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.input-text {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 1;
+  color: white;
+  font-size: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lines-1 {
+  lines: 1;
+}
+
+.input-del {
+  width: 44px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.input-del-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.part1 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.part2 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.row1,
+.row2,
+.row3 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .HVcenter {
+  display: flex;
   align-items: center;
   justify-content: center;
 }
@@ -878,7 +998,9 @@ export default {
 .animator {
   width: 3px;
   height: 35px;
-  margin-top: 10px;
+  margin-left: 6px;
+  align-self: center;
+  flex-shrink: 0;
 }
 
 .switch {
@@ -904,6 +1026,8 @@ export default {
 .line {
   height: 21%;
   width: 100%;
+  display: flex;
+  flex-direction: row;
   justify-content: center;
   align-items: center;
 }

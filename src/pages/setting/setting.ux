@@ -1,5 +1,5 @@
 <import name="time-bar" src="../../components/timeBar"></import>
-<import name="ime" src="../../components/VelaIME.ux"></import>
+<import name="ime" src="../../components/InputMethod/InputMethod.ux"></import>
 
 <template>
   <div class="root">
@@ -82,6 +82,56 @@
             </div>
             <div class="switch {{ transitionsEnabled ? 'switch-on' : 'switch-off' }}">
               <div class="switch-knob"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <text class="section-title">输入法</text>
+
+          <div class="card" onclick="toggleImeKeyboard">
+            <div class="card-texts">
+              <text class="card-title lines-1">键盘布局</text>
+              <text class="card-sub lines-2">点击切换全键/九键</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ imeKeyboardLabel }}</text>
+            </div>
+          </div>
+
+          <div class="card" onclick="cycleImeVibrate">
+            <div class="card-texts">
+              <text class="card-title lines-1">按键振动</text>
+              <text class="card-sub lines-2">点击切换振动强度</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ imeVibrateLabel }}</text>
+            </div>
+          </div>
+
+          <div class="card" onclick="cycleImeScreen">
+            <div class="card-texts">
+              <text class="card-title lines-1">屏幕类型</text>
+              <text class="card-sub lines-2">点击切换布局类型</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ imeScreenLabel }}</text>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-texts">
+              <text class="card-title lines-1">候选词数量</text>
+              <text class="card-sub lines-2">拼音候选词展示个数</text>
+            </div>
+            <div class="stepper">
+              <div class="step-btn" onclick="decImeMaxLen">
+                <text class="step-btn-text">-</text>
+              </div>
+              <text class="step-value lines-1">{{ imeMaxLength }}</text>
+              <div class="step-btn" onclick="incImeMaxLen">
+                <text class="step-btn-text">+</text>
+              </div>
             </div>
           </div>
         </div>
@@ -173,10 +223,10 @@
       </div>
 
       <!-- 开发者信息弹窗 -->
-        <div class="modal-mask {{ devModalAnim }}" show="{{ showDevModal }}">
-          <div class="modal">
-            <text class="modal-title lines-1">开发者信息</text>
-            <text class="modal-sub lines-2">用于“关于应用”展示（本地保存）</text>
+      <div class="modal-mask {{ devModalAnim }}" show="{{ showDevModal }}">
+        <div class="modal">
+          <text class="modal-title lines-1">开发者信息</text>
+          <text class="modal-sub lines-2">用于“关于应用”展示（本地保存）</text>
 
           <div class="form">
             <text class="form-label">开发者</text>
@@ -198,17 +248,33 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- 输入法 -->
-        <div class="ime-layer" if="{{ showIme }}">
-          <div class="ime-header">
-            <text class="ime-title">{{ imeTitle }}</text>
-            <div class="ime-close" onclick="closeIme">
-              <text class="ime-close-text">取消</text>
-            </div>
+      <!-- 输入法 -->
+      <div class="ime-layer" if="{{ showIme }}">
+        <div class="ime-header">
+          <text class="ime-title">{{ imeTitle }}</text>
+          <div class="ime-confirm" onclick="confirmIme">
+            <text class="ime-confirm-text">确定</text>
           </div>
-          <ime hide="{{ false }}" inputbox="{{ imeInput }}" @press="onImePress"></ime>
+          <div class="ime-close" onclick="closeIme">
+            <text class="ime-close-text">取消</text>
+          </div>
         </div>
+        <div class="ime-preview" onclick="confirmIme">
+          <text class="ime-preview-text lines-2">{{ imeInput || "请输入内容" }}</text>
+        </div>
+        <ime
+          style="width: 100%; height: 100%;"
+          hide="{{ false }}"
+          keyboardtype="{{ imeKeyboardType }}"
+          maxlength="{{ imeMaxLength }}"
+          vibratemode="{{ imeVibrateMode }}"
+          screentype="{{ imeScreenType }}"
+          @complete="onImeComplete"
+          @delete="onImeDelete"
+          @finish="confirmIme"
+        ></ime>
       </div>
     </div>
   </div>
@@ -294,6 +360,57 @@ function splitBlacklistInput(text) {
     .filter(Boolean);
 }
 
+const DEFAULT_IME_SETTINGS = {
+  keyboardType: "QWERTY",
+  vibrateMode: "short",
+  screenType: "circle",
+  maxLength: 5,
+};
+
+function normalizeImeKeyboard(v) {
+  return v === "T9" ? "T9" : "QWERTY";
+}
+
+function normalizeImeVibrate(v) {
+  if (v === "" || v === "short" || v === "long") return v;
+  return DEFAULT_IME_SETTINGS.vibrateMode;
+}
+
+function normalizeImeScreen(v) {
+  if (v === "rect" || v === "pill-shaped") return v;
+  return "circle";
+}
+
+function normalizeImeSettings(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const out = {
+    keyboardType: normalizeImeKeyboard(src.keyboardType),
+    vibrateMode: normalizeImeVibrate(src.vibrateMode),
+    screenType: normalizeImeScreen(src.screenType),
+    maxLength: clampInt(src.maxLength, 1, 9, DEFAULT_IME_SETTINGS.maxLength),
+  };
+  if (out.screenType === "pill-shaped" && out.keyboardType === "T9") {
+    out.keyboardType = "QWERTY";
+  }
+  return out;
+}
+
+function imeKeyboardLabel(type) {
+  return type === "T9" ? "九键" : "全键";
+}
+
+function imeVibrateLabel(mode) {
+  if (mode === "long") return "长振动";
+  if (mode === "short") return "短振动";
+  return "不振动";
+}
+
+function imeScreenLabel(type) {
+  if (type === "rect") return "方形";
+  if (type === "pill-shaped") return "胶囊";
+  return "圆形";
+}
+
 export default {
   data: {
     // local settings
@@ -325,6 +442,13 @@ export default {
     imeTitle: "",
     imeInput: "",
     imeMode: "",
+    imeKeyboardType: DEFAULT_IME_SETTINGS.keyboardType,
+    imeVibrateMode: DEFAULT_IME_SETTINGS.vibrateMode,
+    imeScreenType: DEFAULT_IME_SETTINGS.screenType,
+    imeMaxLength: DEFAULT_IME_SETTINGS.maxLength,
+    imeKeyboardLabel: imeKeyboardLabel(DEFAULT_IME_SETTINGS.keyboardType),
+    imeVibrateLabel: imeVibrateLabel(DEFAULT_IME_SETTINGS.vibrateMode),
+    imeScreenLabel: imeScreenLabel(DEFAULT_IME_SETTINGS.screenType),
 
     // dev modal
     showDevModal: false,
@@ -389,6 +513,8 @@ export default {
       this.developerContactText = safeStr(about.developerContact).trim();
       this.updateUrlText = safeStr(about.updateUrl).trim();
       this.developerSummary = buildDeveloperSummary(this.developerNameText, this.developerContactText, this.updateUrlText);
+      const ime = normalizeImeSettings(local && local.ime);
+      this.applyImeState(ime);
     } catch (_) {
       this.transitionsEnabled = true;
       this.jsPollMs = 200;
@@ -396,6 +522,7 @@ export default {
       this.developerContactText = "";
       this.updateUrlText = "";
       this.developerSummary = buildDeveloperSummary("", "", "");
+      this.applyImeState(DEFAULT_IME_SETTINGS);
     }
   },
 
@@ -465,6 +592,66 @@ export default {
       this.transitionsEnabled = !next;
       prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
     }
+  },
+
+  applyImeState(ime) {
+    const next = normalizeImeSettings(ime);
+    this.imeKeyboardType = next.keyboardType;
+    this.imeVibrateMode = next.vibrateMode;
+    this.imeScreenType = next.screenType;
+    this.imeMaxLength = next.maxLength;
+    this.updateImeLabels();
+  },
+
+  updateImeLabels() {
+    this.imeKeyboardLabel = imeKeyboardLabel(this.imeKeyboardType);
+    this.imeVibrateLabel = imeVibrateLabel(this.imeVibrateMode);
+    this.imeScreenLabel = imeScreenLabel(this.imeScreenType);
+  },
+
+  async saveImeSettings(patch) {
+    const next = await updateLocalSettings({ ime: patch || {} });
+    this.applyImeState(next && next.ime);
+  },
+
+  toggleImeKeyboard() {
+    let next = this.imeKeyboardType === "QWERTY" ? "T9" : "QWERTY";
+    if (this.imeScreenType === "pill-shaped" && next === "T9") {
+      next = "QWERTY";
+      prompt.showToast({ message: "胶囊屏仅支持全键", duration: 650 });
+    }
+    this.saveImeSettings({ keyboardType: next });
+  },
+
+  cycleImeVibrate() {
+    const order = ["", "short", "long"];
+    const idx = order.indexOf(this.imeVibrateMode);
+    const next = order[(idx + 1 + order.length) % order.length];
+    this.saveImeSettings({ vibrateMode: next });
+  },
+
+  cycleImeScreen() {
+    const order = ["circle", "rect", "pill-shaped"];
+    const idx = order.indexOf(this.imeScreenType);
+    const next = order[(idx + 1 + order.length) % order.length];
+    const patch = { screenType: next };
+    if (next === "pill-shaped" && this.imeKeyboardType === "T9") {
+      patch.keyboardType = "QWERTY";
+      prompt.showToast({ message: "胶囊屏仅支持全键", duration: 650 });
+    }
+    this.saveImeSettings(patch);
+  },
+
+  decImeMaxLen() {
+    const next = clampInt(this.imeMaxLength - 1, 1, 9, this.imeMaxLength);
+    if (next === this.imeMaxLength) return;
+    this.saveImeSettings({ maxLength: next });
+  },
+
+  incImeMaxLen() {
+    const next = clampInt(this.imeMaxLength + 1, 1, 9, this.imeMaxLength);
+    if (next === this.imeMaxLength) return;
+    this.saveImeSettings({ maxLength: next });
   },
 
   async decDaemonPoll() {
@@ -557,13 +744,21 @@ export default {
     this.imeMode = "";
   },
 
-  onImePress(e) {
+  onImeComplete(e) {
     const detail = e && e.detail ? e.detail : {};
-    const text = String(detail.textbox == null ? "" : detail.textbox);
-    this.imeInput = text;
-    if (detail.status !== 1) return;
+    const content = String(detail.content == null ? "" : detail.content);
+    if (!content) return;
+    this.imeInput = String(this.imeInput == null ? "" : this.imeInput) + content;
+  },
 
+  onImeDelete() {
+    const cur = String(this.imeInput == null ? "" : this.imeInput);
+    this.imeInput = cur.slice(0, -1);
+  },
+
+  confirmIme() {
     const mode = this.imeMode;
+    const text = String(this.imeInput == null ? "" : this.imeInput);
     this.closeIme();
     if (mode !== "blacklist") return;
 
@@ -908,6 +1103,23 @@ export default {
   text-overflow: ellipsis;
 }
 
+.action-pill {
+  min-width: 64px;
+  padding: 6px 10px;
+  border-radius: 16px;
+  background-color: #2a2a2a;
+  border-width: 1px;
+  border-color: #3a3a3a;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-pill-text {
+  color: #f2f2f2;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .blank {
   height: 120px;
 }
@@ -1163,6 +1375,7 @@ export default {
   flex-direction: row;
   justify-content: center;
   align-items: center;
+  position: relative;
 }
 
 .ime-title {
@@ -1185,6 +1398,42 @@ export default {
 .ime-close-text {
   color: #cccccc;
   font-size: 14px;
+}
+
+.ime-confirm {
+  position: absolute;
+  left: 16px;
+  top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #1f3323;
+  border-width: 1px;
+  border-color: #2d5a3a;
+}
+
+.ime-confirm-text {
+  color: #a7f3c3;
+  font-size: 14px;
+}
+
+.ime-preview {
+  width: 88%;
+  min-height: 36px;
+  margin: 6px 0 4px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #111111;
+  border-width: 1px;
+  border-color: #2a2a2a;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.ime-preview-text {
+  color: #e6e6e6;
+  font-size: 14px;
+  lines: 2;
+  text-overflow: ellipsis;
 }
 
 /* —— 页面动画 —— */

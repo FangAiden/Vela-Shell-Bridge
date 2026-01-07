@@ -1,4 +1,4 @@
-<import name="ime" src="../../components/VelaIME.ux"></import>
+<import name="ime" src="../../components/InputMethod/InputMethod.ux"></import>
 <template>
   <div class="page">
     
@@ -6,7 +6,16 @@
       <text class="text" @click="changeState">{{ inputbox }}</text>
     </div>
     <div class="ime" style="display: {{showStatus}};">
-      <ime hide="{{hide}}" @press="press"></ime>
+      <ime
+        hide="{{hide}}"
+        keyboardtype="QWERTY"
+        maxlength="5"
+        vibratemode="short"
+        screentype="circle"
+        @complete="onComplete"
+        @delete="onDelete"
+        @finish="finishInput"
+      ></ime>
     </div>
   </div>
 </template>
@@ -22,12 +31,19 @@ export default {
     this.showStatus = "flex"
     this.hide = !this.hide
   },
-  press(e) {
-    if (e.detail.status == 1) {
-      this.hide = !this.hide
-      this.showStatus = "none"
-      this.inputbox = e.detail.textbox
-    }
+  onComplete(e) {
+    const detail = e && e.detail ? e.detail : {}
+    const content = String(detail.content == null ? "" : detail.content)
+    if (!content) return
+    this.inputbox = String(this.inputbox == null ? "" : this.inputbox) + content
+  },
+  onDelete() {
+    const cur = String(this.inputbox == null ? "" : this.inputbox)
+    this.inputbox = cur.slice(0, -1)
+  },
+  finishInput() {
+    this.hide = true
+    this.showStatus = "none"
   }
 }
 </script>

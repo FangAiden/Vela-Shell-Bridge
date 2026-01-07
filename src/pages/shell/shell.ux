@@ -1,5 +1,5 @@
 <import name="time-bar" src="../../components/timeBar"></import>
-<import name="ime" src="../../components/VelaIME.ux"></import>
+<import name="ime" src="../../components/InputMethod/InputMethod.ux"></import>
 
 <template>
 	<div class="root">
@@ -25,11 +25,27 @@
 		<div class="ime-layer" if="{{ showIme }}">
 			<div class="ime-header">
 				<text class="ime-title">输入命令</text>
+				<div class="ime-confirm" onclick="confirmIme">
+					<text class="ime-confirm-text">确定</text>
+				</div>
 				<div class="ime-close" onclick="closeIme">
 					<text class="ime-close-text">取消</text>
 				</div>
 			</div>
-			<ime hide="{{ false }}" inputbox="{{ imeInput }}" @press="onImePress"></ime>
+			<div class="ime-preview" onclick="confirmIme">
+				<text class="ime-preview-text">{{ imeInput || "请输入命令" }}</text>
+			</div>
+			<ime
+				style="width: 100%; height: 100%;"
+				hide="{{ false }}"
+				keyboardtype="{{ imeKeyboardType }}"
+				maxlength="{{ imeMaxLength }}"
+				vibratemode="{{ imeVibrateMode }}"
+				screentype="{{ imeScreenType }}"
+				@complete="onImeComplete"
+				@delete="onImeDelete"
+				@finish="confirmIme"
+			></ime>
 		</div>
 	</div>
 </template>
@@ -56,6 +72,10 @@ export default {
 		showIme: false,
 		imeInput: "",
 		isRunning: false,
+		imeKeyboardType: "QWERTY",
+		imeVibrateMode: "short",
+		imeScreenType: "circle",
+		imeMaxLength: 5,
 
 		// 动画状态
 		transitionsEnabled: true,
@@ -75,6 +95,11 @@ export default {
 			const enabled = !!(local && local.ui && local.ui.enableTransitions);
 			this.transitionsEnabled = enabled;
 			if (!enabled) this.animClass = "page-static";
+			const ime = local && local.ime ? local.ime : {};
+			this.imeKeyboardType = ime.keyboardType || "QWERTY";
+			this.imeVibrateMode = ime.vibrateMode != null ? ime.vibrateMode : "short";
+			this.imeScreenType = ime.screenType || "circle";
+			this.imeMaxLength = ime.maxLength != null ? ime.maxLength : 5;
 		});
 	},
 	onBackPress() {
@@ -118,14 +143,22 @@ export default {
 		this.imeInput = "";
 	},
 
-	onImePress(e) {
+	onImeComplete(e) {
 		const detail = e && e.detail ? e.detail : {};
-		const text = String(detail.textbox == null ? "" : detail.textbox);
-		this.imeInput = text;
-		if (detail.status !== 1) return;
+		const content = String(detail.content == null ? "" : detail.content);
+		if (!content) return;
+		this.imeInput = String(this.imeInput == null ? "" : this.imeInput) + content;
+	},
 
-		this.showIme = false;
+	onImeDelete() {
+		const cur = String(this.imeInput == null ? "" : this.imeInput);
+		this.imeInput = cur.slice(0, -1);
+	},
+
+	confirmIme() {
+		const text = String(this.imeInput == null ? "" : this.imeInput);
 		const cmd = text.trim();
+		this.closeIme();
 		if (!cmd) return;
 
 		this.inputBuffer = text;
@@ -312,6 +345,7 @@ export default {
 	flex-direction: row;
 	justify-content: center;
 	align-items: center;
+	position: relative;
 }
 
 .ime-title {
@@ -334,6 +368,42 @@ export default {
 .ime-close-text {
 	color: #cccccc;
 	font-size: 14px;
+}
+
+.ime-confirm {
+	position: absolute;
+	left: 16px;
+	top: 6px;
+	padding: 6px 10px;
+	border-radius: 12px;
+	background-color: #1f3323;
+	border-width: 1px;
+	border-color: #2d5a3a;
+}
+
+.ime-confirm-text {
+	color: #a7f3c3;
+	font-size: 14px;
+}
+
+.ime-preview {
+	width: 88%;
+	min-height: 36px;
+	margin: 6px 0 4px;
+	padding: 6px 10px;
+	border-radius: 12px;
+	background-color: #111111;
+	border-width: 1px;
+	border-color: #2a2a2a;
+	align-items: flex-start;
+	justify-content: center;
+}
+
+.ime-preview-text {
+	color: #e6e6e6;
+	font-size: 14px;
+	lines: 2;
+	text-overflow: ellipsis;
 }
 
 /* ====== 入场动画相关样式 ====== */

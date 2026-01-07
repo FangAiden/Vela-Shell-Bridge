@@ -1,6 +1,6 @@
 <import name="time-bar" src="../../components/timeBar"></import>
 <import name="item" src="./components/item"></import>
-<import name="ime" src="../../components/VelaIME.ux"></import>
+<import name="ime" src="../../components/InputMethod/InputMethod.ux"></import>
 
 <template>
   <div class="root">
@@ -73,14 +73,23 @@
             {{ menuTarget ? menuTarget : '' }}
           </text>
 
+          <div class="clipboard-row">
+            <text class="clipboard-label">剪贴板</text>
+            <text class="clipboard-value">
+              {{ clipboard ? ((clipboardMode === 'cut' ? '剪切：' : '复制：') + clipboard.title) : '空' }}
+            </text>
+          </div>
+
           <div class="modal-separator"></div>
 
           <div class="modal-grid">
             <div class="modal-btn" @click="copyTarget">
               <text class="modal-btn-text">复制</text>
             </div>
-            <div class="modal-btn" @click="pasteTarget">
-              <text class="modal-btn-text">粘贴</text>
+            <div class="modal-btn {{ clipboard ? '' : 'modal-btn-disabled' }}" @click="pasteTarget">
+              <text class="modal-btn-text">
+                {{ menuTargetEntry && menuTargetEntry.isDir ? '粘贴到此处' : '粘贴' }}
+              </text>
             </div>
 
             <div class="modal-btn" @click="cutTarget">
@@ -123,18 +132,64 @@
         </div>
       </div>
 
+      <!-- 详情弹窗 -->
+      <div class="detail-mask {{ detailAnim }}" show="{{ showDetail }}">
+        <div class="detail">
+          <text class="detail-title">详细信息</text>
+          <scroll class="detail-scroll" scroll-y="true" bounces="true">
+            <div class="detail-row">
+              <text class="detail-key">名称</text>
+              <text class="detail-val">{{ detailEntry ? detailEntry.title : '' }}</text>
+            </div>
+            <div class="detail-row">
+              <text class="detail-key">类型</text>
+              <text class="detail-val">{{ detailEntry ? detailEntry.type : '' }}</text>
+            </div>
+            <div class="detail-row">
+              <text class="detail-key">大小</text>
+              <text class="detail-val">{{ detailEntry ? (detailEntry.info || '—') : '' }}</text>
+            </div>
+            <div class="detail-row">
+              <text class="detail-key">路径</text>
+              <text class="detail-val detail-path">{{ detailEntry ? detailEntry.fullPath : '' }}</text>
+            </div>
+          </scroll>
+          <div class="detail-actions">
+            <div class="detail-btn" @click="closeDetail">
+              <text class="detail-btn-text">关闭</text>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 时间条 -->
       <time-bar />
 
       <!-- 输入法 -->
-        <div class="ime-layer" if="{{ showIme }}">
-          <div class="ime-header">
-            <text class="ime-title">{{ imeTitle }}</text>
-            <div class="ime-close" onclick="closeIme">
-              <text class="ime-close-text">取消</text>
-            </div>
+      <div class="ime-layer" if="{{ showIme }}">
+        <div class="ime-header">
+          <text class="ime-title">{{ imeTitle }}</text>
+          <div class="ime-confirm" onclick="confirmIme">
+            <text class="ime-confirm-text">确定</text>
           </div>
-        <ime hide="{{ false }}" inputbox="{{ imeInput }}" @press="onImePress"></ime>
+          <div class="ime-close" onclick="closeIme">
+            <text class="ime-close-text">取消</text>
+          </div>
+        </div>
+        <div class="ime-preview" onclick="confirmIme">
+          <text class="ime-preview-text">{{ imeInput || "请输入内容" }}</text>
+        </div>
+        <ime
+          style="width: 100%; height: 100%;"
+          hide="{{ false }}"
+          keyboardtype="{{ imeKeyboardType }}"
+          maxlength="{{ imeMaxLength }}"
+          vibratemode="{{ imeVibrateMode }}"
+          screentype="{{ imeScreenType }}"
+          @complete="onImeComplete"
+          @delete="onImeDelete"
+          @finish="confirmIme"
+        ></ime>
       </div>
     </stack>
   </div>
@@ -260,6 +315,10 @@ export default {
     imeTitle: "",
     imeInput: "",
     imeTarget: null,
+    imeKeyboardType: "QWERTY",
+    imeVibrateMode: "short",
+    imeScreenType: "circle",
+    imeMaxLength: 5,
 
     sticky: false,
     headerHeight: 140,
@@ -269,6 +328,9 @@ export default {
     menuTargetEntry: null,
 
     showConfirm: false,
+    showDetail: false,
+    detailEntry: null,
+    detailAnim: "",
 
     // 页面动画
     transitionsEnabled: true,
@@ -294,6 +356,11 @@ export default {
       const enabled = !!(local && local.ui && local.ui.enableTransitions);
       this.transitionsEnabled = enabled;
       if (!enabled) this.animClass = "page-static";
+      const ime = local && local.ime ? local.ime : {};
+      this.imeKeyboardType = ime.keyboardType || "QWERTY";
+      this.imeVibrateMode = ime.vibrateMode != null ? ime.vibrateMode : "short";
+      this.imeScreenType = ime.screenType || "circle";
+      this.imeMaxLength = ime.maxLength != null ? ime.maxLength : 5;
     });
 
     this.refreshList(this.currentPath);
@@ -302,6 +369,18 @@ export default {
   onBackPress() {
     if (this.showIme) {
       this.closeIme();
+      return true;
+    }
+    if (this.showDetail) {
+      this.closeDetail();
+      return true;
+    }
+    if (this.showConfirm) {
+      this.cancelDelete();
+      return true;
+    }
+    if (this.showMenu) {
+      this.closeMenu();
       return true;
     }
     if (!this.transitionsEnabled) {
@@ -335,7 +414,7 @@ export default {
     if (hit.isDir) {
       this.refreshList(hit.fullPath);
     } else {
-      this.showEntryDetail(hit);
+      this.openDetail(hit);
     }
   },
 
@@ -371,15 +450,23 @@ export default {
     this.imeTarget = null;
   },
 
-  onImePress(e) {
+  onImeComplete(e) {
     const detail = e && e.detail ? e.detail : {};
-    const text = String(detail.textbox == null ? "" : detail.textbox);
-    this.imeInput = text;
-    if (detail.status !== 1) return;
+    const content = String(detail.content == null ? "" : detail.content);
+    if (!content) return;
+    this.imeInput = String(this.imeInput == null ? "" : this.imeInput) + content;
+  },
 
+  onImeDelete() {
+    const cur = String(this.imeInput == null ? "" : this.imeInput);
+    this.imeInput = cur.slice(0, -1);
+  },
+
+  confirmIme() {
+    const text = String(this.imeInput == null ? "" : this.imeInput);
+    const trimmed = text.trim();
     const mode = this.imeMode;
     const target = this.imeTarget;
-    const trimmed = text.trim();
     this.closeIme();
     if (!trimmed) return;
 
@@ -437,18 +524,13 @@ export default {
     }
   },
 
-  showEntryDetail(entry) {
-    if (!entry) return;
-    const info = entry.info && entry.info !== "—" ? entry.info : "";
-    const msg = info
-      ? `${entry.title}\n${info}\n${entry.fullPath}`
-      : `${entry.title}\n${entry.fullPath}`;
-    prompt.showToast({ message: msg, duration: 1100 });
-  },
-
   doRename(entry, nextName) {
     const name = String(nextName == null ? "" : nextName).trim();
     if (!entry || !name) return;
+    if (name.includes("/")) {
+      prompt.showToast({ message: "名称不能包含 /", duration: 700 });
+      return;
+    }
     if (name === entry.title) return;
     const destPath = joinPath(this.currentPath, name);
     const cmd = `mv ${shellEscape(entry.fullPath)} ${shellEscape(destPath)}`;
@@ -498,16 +580,21 @@ export default {
       this.closeMenu();
       return;
     }
-    const dest = joinPath(this.currentPath, entry.title);
+    const target = this.menuTargetEntry;
+    const destDir = target && target.isDir ? target.fullPath : this.currentPath;
+    const dest = joinPath(destDir, entry.title);
     if (dest === entry.fullPath) {
       prompt.showToast({ message: "已在当前目录", duration: 650 });
       this.closeMenu();
       return;
     }
+    const isDir = !!entry.isDir;
     const cmd = this.clipboardMode === "cut"
       ? `mv ${shellEscape(entry.fullPath)} ${shellEscape(dest)}`
-      : `cp -r ${shellEscape(entry.fullPath)} ${shellEscape(dest)}`;
-    this.runShell(cmd, "粘贴完成").then((ok) => {
+      : (isDir
+        ? `cp -r ${shellEscape(entry.fullPath)} ${shellEscape(dest)}`
+        : `cp ${shellEscape(entry.fullPath)} ${shellEscape(dest)}`);
+    this.runShell(cmd, `已粘贴到：${destDir}`).then((ok) => {
       if (ok && this.clipboardMode === "cut") {
         this.clipboard = null;
         this.clipboardMode = "";
@@ -574,9 +661,26 @@ export default {
   detailTarget() {
     const entry = this.menuTargetEntry;
     if (entry) {
-      this.showEntryDetail(entry);
+      this.openDetail(entry);
     }
     this.closeMenu();
+  },
+
+  openDetail(entry) {
+    this.detailEntry = entry || null;
+    this.showDetail = true;
+    this.detailAnim = "";
+    setTimeout(() => {
+      this.detailAnim = "modal-enter";
+    }, 0);
+  },
+
+  closeDetail() {
+    this.detailAnim = "modal-leave";
+    setTimeout(() => {
+      this.showDetail = false;
+      this.detailEntry = null;
+    }, 180);
   },
 };
 </script>
@@ -792,6 +896,26 @@ export default {
   color: #ffffff;
 }
 
+.clipboard-row {
+  padding: 0 14px 8px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.clipboard-label {
+  color: #8a8a8a;
+  font-size: 14px;
+}
+
+.clipboard-value {
+  color: #d0d0d0;
+  font-size: 14px;
+  max-width: 70%;
+  text-overflow: ellipsis;
+  lines: 1;
+}
+
 .modal-separator {
   height: 1px;
   background-color: #2d2d2d;
@@ -812,6 +936,10 @@ export default {
   background-color: #333333;
   justify-content: center;
   align-items: center;
+}
+
+.modal-btn-disabled {
+  opacity: 0.45;
 }
 
 .modal-btn-text {
@@ -903,6 +1031,92 @@ export default {
   background-color: #2a2a2a;
 }
 
+/* —— 详情弹窗 —— */
+.detail-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.65);
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  transform: scale(0.9);
+  transform-origin: center center;
+}
+
+.detail {
+  width: 80%;
+  height: 58%;
+  border-radius: 20px;
+  background-color: rgba(25, 25, 25, 0.98);
+  padding: 12px 12px 10px;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.detail-title {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.detail-scroll {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+}
+
+.detail-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 4px;
+}
+
+.detail-key {
+  color: #8a8a8a;
+  font-size: 13px;
+  width: 26%;
+}
+
+.detail-val {
+  color: #e8e8e8;
+  font-size: 13px;
+  width: 74%;
+  text-align: right;
+}
+
+.detail-path {
+  lines: 3;
+  text-overflow: ellipsis;
+}
+
+.detail-actions {
+  height: 42px;
+  justify-content: center;
+  align-items: center;
+}
+
+.detail-btn {
+  width: 60%;
+  height: 34px;
+  border-radius: 17px;
+  background-color: #2a2a2a;
+  justify-content: center;
+  align-items: center;
+}
+
+.detail-btn-text {
+  color: #f1f1f1;
+  font-size: 14px;
+  font-weight: 800;
+}
+
 /* —— 输入法 —— */
 .ime-layer {
   position: absolute;
@@ -923,6 +1137,7 @@ export default {
   flex-direction: row;
   justify-content: center;
   align-items: center;
+  position: relative;
 }
 
 .ime-title {
@@ -945,5 +1160,41 @@ export default {
 .ime-close-text {
   color: #cccccc;
   font-size: 14px;
+}
+
+.ime-confirm {
+  position: absolute;
+  left: 16px;
+  top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #1f3323;
+  border-width: 1px;
+  border-color: #2d5a3a;
+}
+
+.ime-confirm-text {
+  color: #a7f3c3;
+  font-size: 14px;
+}
+
+.ime-preview {
+  width: 88%;
+  min-height: 36px;
+  margin: 6px 0 4px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #111111;
+  border-width: 1px;
+  border-color: #2a2a2a;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.ime-preview-text {
+  color: #e6e6e6;
+  font-size: 14px;
+  lines: 2;
+  text-overflow: ellipsis;
 }
 </style>

@@ -25,6 +25,12 @@ const DEFAULTS = {
     developerContact: "",
     updateUrl: "",
   },
+  ime: {
+    keyboardType: "QWERTY",
+    vibrateMode: "short",
+    screenType: "circle",
+    maxLength: 5,
+  },
 };
 
 function syncGlobal(next) {
@@ -68,6 +74,20 @@ function normalize(raw) {
     if (typeof dn === "string") out.about.developerName = dn.trim().slice(0, 80);
     if (typeof dc === "string") out.about.developerContact = dc.trim().slice(0, 120);
     if (typeof url === "string") out.about.updateUrl = url.trim().slice(0, 200);
+  }
+
+  if (raw.ime && typeof raw.ime === "object") {
+    const kt = raw.ime.keyboardType;
+    const vm = raw.ime.vibrateMode;
+    const st = raw.ime.screenType;
+    const ml = raw.ime.maxLength;
+    if (kt === "QWERTY" || kt === "T9") out.ime.keyboardType = kt;
+    if (vm === "" || vm === "short" || vm === "long") out.ime.vibrateMode = vm;
+    if (st === "circle" || st === "rect" || st === "pill-shaped") out.ime.screenType = st;
+    if (ml != null) out.ime.maxLength = clampInt(ml, 1, 9, out.ime.maxLength);
+  }
+  if (out.ime.screenType === "pill-shaped" && out.ime.keyboardType === "T9") {
+    out.ime.keyboardType = "QWERTY";
   }
 
   return out;
@@ -205,6 +225,24 @@ function applyPatch(current, patch) {
     if (typeof patch.about.updateUrl === "string") {
       next.about.updateUrl = patch.about.updateUrl.trim().slice(0, 200);
     }
+  }
+
+  if (patch.ime && typeof patch.ime === "object") {
+    if (patch.ime.keyboardType === "QWERTY" || patch.ime.keyboardType === "T9") {
+      next.ime.keyboardType = patch.ime.keyboardType;
+    }
+    if (patch.ime.vibrateMode === "" || patch.ime.vibrateMode === "short" || patch.ime.vibrateMode === "long") {
+      next.ime.vibrateMode = patch.ime.vibrateMode;
+    }
+    if (patch.ime.screenType === "circle" || patch.ime.screenType === "rect" || patch.ime.screenType === "pill-shaped") {
+      next.ime.screenType = patch.ime.screenType;
+    }
+    if (patch.ime.maxLength != null) {
+      next.ime.maxLength = clampInt(patch.ime.maxLength, 1, 9, next.ime.maxLength);
+    }
+  }
+  if (next.ime.screenType === "pill-shaped" && next.ime.keyboardType === "T9") {
+    next.ime.keyboardType = "QWERTY";
   }
 
   return next;
