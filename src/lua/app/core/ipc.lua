@@ -279,6 +279,31 @@ end
 -- Exec：执行命令 (Sync/Async) 或 Kill
 ----------------------------------------------------------------------
 
+local function check_job_owner(app_id, job_id)
+    if app_id == ADMIN_APP_ID then
+        return true
+    end
+
+    if not job_id or job_id == "" then
+        return false, "job_id required"
+    end
+
+    local owner = nil
+    if execmod.get_job_owner then
+        owner = execmod.get_job_owner(job_id)
+    end
+
+    if not owner or owner == "" then
+        return false, "owner unknown"
+    end
+
+    if owner ~= app_id then
+        return false, "not owner"
+    end
+
+    return true
+end
+
 local function handle_exec(app_id, req)
     local args = req.args or {}
     local cmd  = req.cmd -- "exec" or "kill"
@@ -287,6 +312,14 @@ local function handle_exec(app_id, req)
     if cmd == "kill" then
         if not args.job_id then
             return error_response(req.id, "BAD_REQUEST", "job_id required for kill")
+        end
+        local ok_owner = check_job_owner(app_id, args.job_id)
+        if not ok_owner then
+            local resp = error_response(req.id, "NO_PERMISSION", "Job not owned by app")
+            if should_save_history() and logmod.record_exec_denied then
+                pcall(logmod.record_exec_denied, app_id, "kill " .. tostring(args.job_id), resp)
+            end
+            return resp
         end
         -- 调用 exec.lua 的 kill_job
         local r = execmod.kill_job(args.job_id)
@@ -305,6 +338,14 @@ local function handle_exec(app_id, req)
     -- 2. 轮询已有 Job (poll_job)
     -- 如果传了 job_id，说明是来查状态的
     if job_id and job_id ~= "" then
+        local ok_owner = check_job_owner(app_id, job_id)
+        if not ok_owner then
+            local resp = error_response(req.id, "NO_PERMISSION", "Job not owned by app")
+            if should_save_history() and logmod.record_exec_denied then
+                pcall(logmod.record_exec_denied, app_id, "poll " .. tostring(job_id), resp)
+            end
+            return resp
+        end
         local r = execmod.poll_job(job_id)
         r.id = req.id
         if should_save_history() and r and r.state == "done" and logmod.update_exec_job then
@@ -354,7 +395,7 @@ local function handle_exec(app_id, req)
     end
 
     -- 启动任务 (传入 is_sync 参数)
-    local r = execmod.start_job(shell_cmd, is_sync)
+    local r = execmod.start_job(shell_cmd, is_sync, app_id)
     r.id = req.id
     if should_save_history() and logmod.record_exec_start then
         pcall(logmod.record_exec_start, app_id, shell_cmd, r)

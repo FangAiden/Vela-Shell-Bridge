@@ -43,7 +43,27 @@ local function job_paths(job_id)
         killed  = base .. ".killed",
         script  = base .. ".sh",
         wrapper = base .. "_wrapper.sh",
+        owner   = base .. ".owner",
     }
+end
+
+function M.get_job_owner(job_id)
+    if not job_id or job_id == "" then
+        return nil
+    end
+
+    local paths = job_paths(job_id)
+    local owner = fs.read_file(paths.owner)
+    if not owner or owner == "" then
+        return nil
+    end
+
+    owner = owner:match("^%s*(.-)%s*$") or ""
+    if owner == "" then
+        return nil
+    end
+
+    return owner
 end
 
 local function normalize_exit_code(ok, why, code)
@@ -95,6 +115,7 @@ local function cleanup(paths)
         fs.remove_file(paths.killed)
         fs.remove_file(paths.script)
         fs.remove_file(paths.wrapper)
+        fs.remove_file(paths.owner)
     end)
 end
 
@@ -102,7 +123,7 @@ end
 -- 启动 Job
 ----------------------------------------------------------------------
 
-function M.start_job(shell_cmd, is_sync)
+function M.start_job(shell_cmd, is_sync, app_id)
     if not shell_cmd or shell_cmd == "" then
         return { ok = false, message = "empty shell command" }
     end
@@ -114,8 +135,17 @@ function M.start_job(shell_cmd, is_sync)
 
     log("start_job: id=" .. job_id .. " mode=" .. (is_sync and "SYNC" or "ASYNC"))
 
+    if app_id and app_id ~= "" then
+        if not fs.write_file(paths.owner, tostring(app_id) .. "\n") then
+            return { ok = false, message = "failed to write owner file" }
+        end
+    end
+
     -- 1) 落盘命令文本（便于排查；注意：该设备 `sh <file>` 返回码不可靠，因此不直接执行脚本文件）
     if not fs.write_file(paths.script, shell_cmd .. "\n") then
+        pcall(function()
+            fs.remove_file(paths.owner)
+        end)
         return { ok = false, message = "failed to write script file" }
     end
 
@@ -131,6 +161,7 @@ function M.start_job(shell_cmd, is_sync)
         pcall(function()
             fs.remove_file(paths.out)
             fs.remove_file(paths.script)
+            fs.remove_file(paths.owner)
         end)
 
         return {
