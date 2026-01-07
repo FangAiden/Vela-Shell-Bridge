@@ -18,6 +18,7 @@ local ipc      = require("app.core.ipc")
 local policy   = require("app.domain.policy")
 local logmod   = require("app.domain.log")
 local allowlst = require("app.domain.allowlist")
+local settings = require("app.domain.settings")
 local app_scan = require("app.domain.app_scan")
 
 -------------------------------------------------
@@ -74,6 +75,7 @@ end
 -------------------------------------------------
 local function init_daemon_state(log_view)
     local ok, err = pcall(function()
+        settings.load()
         policy.load()
         logmod.load()
         allowlst.load()
@@ -93,15 +95,30 @@ local function start_daemon(log_view)
     init_daemon_state(log_view)
     append_log(log_view, "SU Daemon starting...")
 
-    local period_ms = 300
+    local period_ms = tonumber(_G.SU_DAEMON_PERIOD_MS) or 300
+    if period_ms < 50 then period_ms = 50 end
+    if period_ms > 2000 then period_ms = 2000 end
+    local current_period_ms = period_ms
 
     su_timer = lvgl.Timer {
         period = period_ms,
         paused = false,
-        cb = function()
+        cb = function(self)
             -- 统一总开关：关闭时，整套 IPC/exec 逻辑不执行
             if not _G.SU_ENABLED then
                 return
+            end
+
+            -- 支持动态修改 daemon 轮询频率（由 QuickApp 通过 management 写入 settings.json）
+            local desired = tonumber(_G.SU_DAEMON_PERIOD_MS) or current_period_ms
+            if desired < 50 then desired = 50 end
+            if desired > 2000 then desired = 2000 end
+            if desired ~= current_period_ms then
+                current_period_ms = desired
+                if self and self.set then
+                    pcall(function() self:set({ period = desired }) end)
+                end
+                append_log(log_view, "SU Daemon period -> " .. tostring(desired) .. " ms")
             end
 
             local ok, err = pcall(function()

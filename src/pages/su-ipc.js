@@ -1,6 +1,7 @@
 // src/pages/su-ipc.js
 import file from '@system.file';
 import app from '@system.app';
+import { getLocalSettings } from "./app-settings.js";
 
 const BASE = 'internal://files/';
 const REQUEST_TIMEOUT = 1250;
@@ -93,6 +94,14 @@ function runExclusive(taskFn) {
   return p.then(v => { unlock(); return v; }, e => { unlock(); throw e; });
 }
 
+function clampInt(n, minv, maxv, fallback) {
+  const v = Math.floor(Number(n));
+  if (!isFinite(v)) return fallback;
+  if (v < minv) return minv;
+  if (v > maxv) return maxv;
+  return v;
+}
+
 // ---------------------------------------------------------
 // 核心 suExec
 // ---------------------------------------------------------
@@ -102,10 +111,16 @@ function suExec(shellCmd, options = {}) {
   const isSync = options.sync === true;
   const onProgress = options.onProgress;
   const onStart = options.onStart;
-  const pollInterval = options.statusPollInterval || STATUS_POLL_INTERVAL;
   const overallTimeoutMs = options.timeoutMs || EXEC_OVERALL_TIMEOUT;
 
   return runExclusive(async () => {
+    const local = await getLocalSettings().catch(() => null);
+    const defaultPollInterval =
+      local && local.ipc
+        ? clampInt(local.ipc.jsPollIntervalMs, 50, 2000, STATUS_POLL_INTERVAL)
+        : STATUS_POLL_INTERVAL;
+    const pollInterval = options.statusPollInterval || defaultPollInterval;
+
     // 1. 发送 Start 请求
     let startResp;
     try {
@@ -215,6 +230,12 @@ async function getPolicies(options = {}) {
   return resp.data || {};
 }
 
+async function getEnv(options = {}) {
+  const resp = await management("get_env", {}, options);
+  if (!resp || resp.ok !== true) throw new Error((resp && resp.message) || "get_env failed");
+  return resp.data || {};
+}
+
 async function setPolicy(appId, policy, options = {}) {
   if (!appId) throw new Error("appId required");
   if (!policy) throw new Error("policy required");
@@ -245,14 +266,25 @@ async function scanApps(options = {}) {
   return Array.isArray(apps) ? apps : [];
 }
 
+async function scanAppsInfo(options = {}) {
+  const resp = await management("scan_apps", {}, options);
+  if (!resp || resp.ok !== true) throw new Error((resp && resp.message) || "scan_apps failed");
+  const data = resp.data || {};
+  const apps = Array.isArray(data.apps) ? data.apps : [];
+  const meta = (data.meta && typeof data.meta === "object") ? data.meta : {};
+  return { apps, meta };
+}
+
 suIpc.management = management;
 suIpc.getLogs = getLogs;
 suIpc.clearLogs = clearLogs;
 suIpc.getPolicies = getPolicies;
+suIpc.getEnv = getEnv;
 suIpc.setPolicy = setPolicy;
 suIpc.getAllowlist = getAllowlist;
 suIpc.setAllowlist = setAllowlist;
 suIpc.scanApps = scanApps;
+suIpc.scanAppsInfo = scanAppsInfo;
 
 // 兼容两种用法：
 // - import suExec from "../su-ipc"; suExec("ls")

@@ -17,6 +17,7 @@
 <script>
 import prompt from "@system.prompt";
 import router from "@system.router";
+import { getCachedTransitionsEnabled, getLocalSettings } from "../app-settings.js";
 
 export default {
 	data: {
@@ -31,19 +32,31 @@ export default {
 			"  d.txt",
 			"  e.txt",
 		],
+		// 动画状态
+		transitionsEnabled: true,
 		animClass: "", // 控制页面入场动画的 class
+		isLeaving: false,
 	},
 	onShow() {
 		this.$broadcast("page-on-show", {});
 
-		// 触发一次入场动画：
-		// 先清掉 class，再在下一帧加上，保证每次 onShow 都会重新播放
+		this.transitionsEnabled = getCachedTransitionsEnabled();
+		this.isLeaving = false;
 		this.animClass = "";
 		setTimeout(() => {
-			this.animClass = "page-enter";
+			this.animClass = this.transitionsEnabled ? "page-enter" : "page-static";
 		}, 0);
+		getLocalSettings().then((local) => {
+			const enabled = !!(local && local.ui && local.ui.enableTransitions);
+			this.transitionsEnabled = enabled;
+			if (!enabled) this.animClass = "page-static";
+		});
 	},
 	onBackPress() {
+		if (!this.transitionsEnabled) {
+			router.back();
+			return true;
+		}
 		// 如果已经在播放退出动画，就不再重复触发
 		if (this.isLeaving) {
 			return true; // 告诉系统：我自己处理
@@ -85,6 +98,11 @@ export default {
 	opacity: 0;
 	transform: scale(0.80);
 	transform-origin: center center;  /* 从中心缩放 */
+}
+
+.page-static {
+	opacity: 1;
+	transform: scale(1);
 }
 
 /* 终端区域：在 square-wrapper 中形成“最大内切正方形” */

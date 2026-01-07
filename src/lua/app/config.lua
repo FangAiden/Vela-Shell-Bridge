@@ -1,21 +1,31 @@
 -- config.lua
--- 全局路径配置，所有模块统一从这里读取，避免硬编码重复
+-- Global path configuration for the Lua daemon.
+-- Adjust these paths for real devices if needed.
 
 local CONFIG = {}
 
--- Lua 根目录（你可随时改这个，不影响其他模块）
+-- Lua root directory (watchface Lua)
 CONFIG.BASE_DIR = "/data/app/watchface/market/167210065/lua"
 
--- 业务数据文件目录
+-- Business data directory
 CONFIG.DATA_DIR = CONFIG.BASE_DIR .. "/data"
 
--- 临时文件目录（执行 shell 输出）
+-- Temporary directory (shell output, job files)
 CONFIG.TMP_DIR = CONFIG.BASE_DIR .. "/tmp"
 
--- 快应用的根目录（用于 IPC）
+-- QuickApp sandbox root (the actual path of internal://files). Used for IPC scanning.
 CONFIG.QUICKAPP_BASE = "/data/files"
 
--- 管理器 AppA 的 AppID（权限管理器）
+-- Installed app list (try in order)
+-- Can be string or table (first readable file wins).
+CONFIG.APPS_JSON = { "/data/apps.json", "/data/quickapp/apps.json" }
+
+-- Installed package directories (try in order)
+-- Can be string or table (first existing package dir wins).
+CONFIG.APP_INSTALL_BASE = { "/data/quickapp/app", "/data/app", "/data/app/quickapp" }
+
+-- Admin AppID (permission manager)
 CONFIG.ADMIN_APP_ID = "com.lua.dev.template"
 
 return CONFIG
+

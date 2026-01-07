@@ -9,13 +9,48 @@ local logmod    = require("app.domain.log")
 local allowlist = require("app.domain.allowlist")
 local appscan   = require("app.domain.app_scan")
 local execmod   = require("app.domain.exec")
+local settings  = require("app.domain.settings")
 
 local JSON = _G.JSON or require("app.util.json_util")
 
 local M = {}
 
-local QUICKAPP_BASE = config.QUICKAPP_BASE
-local ADMIN_APP_ID  = config.ADMIN_APP_ID
+local function trim_trailing_slashes(p)
+    if type(p) ~= "string" then
+        return ""
+    end
+    return (p:gsub("/+$", ""))
+end
+
+local function normalize_quickapp_paths()
+    local admin = config.ADMIN_APP_ID
+    if type(admin) ~= "string" then
+        admin = ""
+    end
+
+    local base = trim_trailing_slashes(config.QUICKAPP_BASE or "")
+    if base == "" then
+        base = "/data/files"
+    end
+
+    if admin ~= "" then
+        local suffix = "/" .. admin
+        if base:sub(-#suffix) == suffix then
+            local root = base:sub(1, #base - #suffix)
+            root = trim_trailing_slashes(root)
+            if root == "" then
+                root = "/data/files"
+            end
+            return root, base, admin
+        end
+        return base, (base .. suffix), admin
+    end
+
+    return base, (base .. "/"), admin
+end
+
+local QUICKAPP_ROOT, ADMIN_FILES_DIR, ADMIN_APP_ID = normalize_quickapp_paths()
+local QUICKAPP_BASE = QUICKAPP_ROOT
 
 local REQ_PATTERN = "^ipc_request_([%w_%-]+)%.json$"
 
@@ -25,6 +60,56 @@ local function log(msg)
     else
         print("[ipc]", msg)
     end
+end
+
+local function should_save_history()
+    return (_G.SU_SAVE_HISTORY ~= false)
+end
+
+local function trim(s)
+    if type(s) ~= "string" then return "" end
+    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function first_token(cmd)
+    if type(cmd) ~= "string" then return "" end
+    return cmd:match("^%s*(%S+)") or ""
+end
+
+local function is_cmd_blacklisted(shell_cmd)
+    if type(shell_cmd) ~= "string" or shell_cmd == "" then
+        return false
+    end
+
+    local cmd = shell_cmd
+    local token = first_token(cmd)
+    if token == "" then
+        return false
+    end
+
+    local list = (_G.SU_CMD_BLACKLIST ~= nil) and _G.SU_CMD_BLACKLIST or nil
+    if not list or type(list) ~= "table" then
+        local d = settings.get and settings.get() or {}
+        list = (d and d.cmd_blacklist) or {}
+    end
+
+    for _, it in ipairs(list) do
+        local p = trim(it)
+        if p ~= "" then
+            -- 带空格：按“包含字符串”匹配；不带空格：按“命令名”匹配
+            if p:find("%s") then
+                if cmd:find(p, 1, true) then
+                    return true, p
+                end
+            else
+                if token == p then
+                    return true, p
+                end
+            end
+        end
+    end
+
+    return false
 end
 
 ----------------------------------------------------------------------
@@ -90,6 +175,31 @@ local function handle_management(app_id, req)
         local data = policy.get_all_policies()
         return ok_response(req.id, data)
 
+    elseif cmd == "get_settings" then
+        local data = settings.get and settings.get() or {}
+        return ok_response(req.id, data)
+
+    elseif cmd == "get_env" then
+        return ok_response(req.id, {
+            quickapp_root     = QUICKAPP_ROOT,
+            admin_files_dir   = ADMIN_FILES_DIR,
+            admin_app_id      = ADMIN_APP_ID,
+            apps_json         = config.APPS_JSON,
+            app_install_base  = config.APP_INSTALL_BASE,
+        })
+
+    elseif cmd == "set_settings" then
+        local ok, data_or_err = true, nil
+        if settings.update then
+            ok, data_or_err = settings.update(args or {})
+        else
+            ok, data_or_err = false, "settings module missing"
+        end
+        if not ok then
+            return error_response(req.id, "BAD_REQUEST", tostring(data_or_err or "invalid settings"))
+        end
+        return ok_response(req.id, data_or_err or {})
+
     elseif cmd == "get_allowlist" then
         local m = allowlist.get_all() or {}
         local list = {}
@@ -102,8 +212,31 @@ local function handle_management(app_id, req)
         return ok_response(req.id, { allowlist = list })
 
     elseif cmd == "scan_apps" then
-        local apps = appscan.scan_all_apps(QUICKAPP_BASE)
-        return ok_response(req.id, { apps = apps })
+        local apps, meta = {}, {}
+        if appscan.scan_installed_apps then
+            apps, meta = appscan.scan_installed_apps()
+        else
+            apps = appscan.scan_all_apps(QUICKAPP_BASE)
+            meta = {}
+        end
+
+        -- 管理器自身不参与授权列表
+        if type(apps) == "table" and #apps > 0 then
+            local filtered = {}
+            local meta2 = {}
+            for _, id in ipairs(apps) do
+                if id ~= ADMIN_APP_ID then
+                    filtered[#filtered + 1] = id
+                    if meta and meta[id] ~= nil then
+                        meta2[id] = meta[id]
+                    end
+                end
+            end
+            apps = filtered
+            meta = meta2
+        end
+
+        return ok_response(req.id, { apps = apps, meta = meta })
 
     elseif cmd == "set_policy" then
         local app_id2 = args.app_id
@@ -158,7 +291,7 @@ local function handle_exec(app_id, req)
         -- 调用 exec.lua 的 kill_job
         local r = execmod.kill_job(args.job_id)
         r.id = req.id
-        if logmod.record_exec_kill then
+        if should_save_history() and logmod.record_exec_kill then
             pcall(logmod.record_exec_kill, app_id, args.job_id, r)
         end
         return r
@@ -174,7 +307,7 @@ local function handle_exec(app_id, req)
     if job_id and job_id ~= "" then
         local r = execmod.poll_job(job_id)
         r.id = req.id
-        if r and r.state == "done" and logmod.update_exec_job then
+        if should_save_history() and r and r.state == "done" and logmod.update_exec_job then
             pcall(logmod.update_exec_job, job_id, r)
         end
         return r
@@ -185,7 +318,23 @@ local function handle_exec(app_id, req)
         return error_response(req.id, "BAD_REQUEST", "args.shell required")
     end
 
-    logmod.record_request(app_id)
+    -- 黑名单命令拦截（对所有 app 生效，包括 admin）
+    local blocked, why = is_cmd_blacklisted(shell_cmd)
+    if blocked then
+        local resp = error_response(
+            req.id,
+            "CMD_BLACKLISTED",
+            "Command is blacklisted: " .. tostring(why or "")
+        )
+        if should_save_history() and logmod.record_exec_denied then
+            pcall(logmod.record_exec_denied, app_id, shell_cmd, resp)
+        end
+        return resp
+    end
+
+    if should_save_history() then
+        logmod.record_request(app_id)
+    end
 
     -- 权限检查
     if app_id ~= ADMIN_APP_ID then
@@ -197,7 +346,7 @@ local function handle_exec(app_id, req)
                 code,
                 "App " .. app_id .. " is not allowed to execute shell (reason: " .. tostring(reason) .. ")"
             )
-            if logmod.record_exec_denied then
+            if should_save_history() and logmod.record_exec_denied then
                 pcall(logmod.record_exec_denied, app_id, shell_cmd, resp)
             end
             return resp
@@ -207,7 +356,7 @@ local function handle_exec(app_id, req)
     -- 启动任务 (传入 is_sync 参数)
     local r = execmod.start_job(shell_cmd, is_sync)
     r.id = req.id
-    if logmod.record_exec_start then
+    if should_save_history() and logmod.record_exec_start then
         pcall(logmod.record_exec_start, app_id, shell_cmd, r)
     end
     return r
@@ -294,6 +443,9 @@ function M.run_once()
     end
 
     policy.save_if_dirty()
+    if settings.save_if_dirty then
+        settings.save_if_dirty()
+    end
     if logmod.save_if_any_dirty then
         logmod.save_if_any_dirty()
     elseif logmod.save_if_dirty then

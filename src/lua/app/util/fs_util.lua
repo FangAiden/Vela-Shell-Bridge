@@ -12,6 +12,12 @@ os.execute(string.format('mkdir -p %s', config.TMP_DIR))
 
 local TMP_LIST_FILE = config.TMP_DIR .. "/fs_list_tmp.txt"
 
+local function sh_quote(s)
+    s = tostring(s or "")
+    s = s:gsub('"', '\\"')
+    return '"' .. s .. '"'
+end
+
 ----------------------------------------------------------------------
 -- 1. read / write / remove 基础文件操作
 ----------------------------------------------------------------------
@@ -22,6 +28,13 @@ function M.read_file(path)
     local data = f:read("*a")
     f:close()
     return data
+end
+
+function M.file_exists(path)
+    local f = io.open(path, "r")
+    if not f then return false end
+    f:close()
+    return true
 end
 
 function M.write_file(path, data)
@@ -110,6 +123,28 @@ function M.list_dirs(dir)
     end
 
     return dirs
+end
+
+----------------------------------------------------------------------
+-- is_dir: 判断路径是否为目录（目标设备 ls 不一定带 "/"，因此用 cd 判断）
+----------------------------------------------------------------------
+
+function M.is_dir(path)
+    if type(path) ~= "string" or path == "" then
+        return false
+    end
+
+    local tmp = config.TMP_DIR .. "/fs_isdir_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999)) .. ".txt"
+    local q_path = sh_quote(path)
+    local q_tmp = sh_quote(tmp)
+
+    -- 用 `cd` 的返回状态判断（避免依赖 [ -d ] 是否存在）
+    local cmd = string.format('if cd %s; then echo 1 > %s; else echo 0 > %s; fi', q_path, q_tmp, q_tmp)
+    os.execute(cmd)
+
+    local out = M.read_file(tmp) or ""
+    os.remove(tmp)
+    return (out:match("1") ~= nil)
 end
 
 return M

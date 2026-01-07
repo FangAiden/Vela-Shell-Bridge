@@ -2,52 +2,201 @@
 
 <template>
   <div class="root">
-    <!-- 顶部时间条：不参与动画 -->
     <time-bar />
 
-    <!-- 动画主体：安全区 -->
     <div class="safe-area page-anim {{ animClass }}">
       <scroll class="list" scroll-y="true" bounces="true">
 
-        <!-- 卡片：危险命令确认 -->
-        <div class="card" onclick="onToggleConfirmDanger">
-          <div class="card-texts">
-            <text class="card-title">确认危险命令</text>
-            <text class="card-sub">执行 rm 等命令前提示确认</text>
+        <div class="header">
+          <image class="header-icon" src="/resources/image/setting.png"></image>
+          <text class="header-title lines-1">设置</text>
+          <text class="header-sub lines-1">应用与守护进程配置</text>
+        </div>
+
+        <div class="section">
+          <text class="section-title">执行与日志</text>
+
+          <div class="card" onclick="onToggleSaveHistory">
+            <div class="card-texts">
+              <text class="card-title lines-1">记录历史命令</text>
+              <text class="card-sub lines-2">保存到日志页（可能占用空间）</text>
+            </div>
+            <div class="switch {{ saveHistory ? 'switch-on' : 'switch-off' }}">
+              <div class="switch-knob"></div>
+            </div>
           </div>
-          <div class="switch {{ confirmDanger ? 'switch-on' : 'switch-off' }}">
-            <div class="switch-knob"></div>
+
+          <div class="card" onclick="openBlacklist">
+            <div class="card-texts">
+              <text class="card-title lines-1">黑名单命令</text>
+              <text class="card-sub lines-2">{{ blacklistSummary }}</text>
+            </div>
+            <image class="arrow" src="/resources/image/right_arrow.png"></image>
           </div>
         </div>
 
-        <!-- 卡片：记录命令历史 -->
-        <div class="card" onclick="onToggleSaveHistory">
-          <div class="card-texts">
-            <text class="card-title">记录命令历史</text>
-            <text class="card-sub">将最近执行命令保存到日志</text>
+        <div class="section">
+          <text class="section-title">性能</text>
+
+          <div class="card">
+            <div class="card-texts">
+              <text class="card-title lines-1">Daemon 轮询频率</text>
+              <text class="card-sub lines-2">IPC 扫描间隔（ms）</text>
+            </div>
+            <div class="stepper">
+              <div class="step-btn" onclick="decDaemonPoll">
+                <text class="step-btn-text">-</text>
+              </div>
+              <text class="step-value lines-1">{{ daemonPollMs }}ms</text>
+              <div class="step-btn" onclick="incDaemonPoll">
+                <text class="step-btn-text">+</text>
+              </div>
+            </div>
           </div>
-          <div class="switch {{ saveHistory ? 'switch-on' : 'switch-off' }}">
-            <div class="switch-knob"></div>
+
+          <div class="card">
+            <div class="card-texts">
+              <text class="card-title lines-1">JS 轮询频率</text>
+              <text class="card-sub lines-2">异步任务轮询间隔（ms）</text>
+            </div>
+            <div class="stepper">
+              <div class="step-btn" onclick="decJsPoll">
+                <text class="step-btn-text">-</text>
+              </div>
+              <text class="step-value lines-1">{{ jsPollMs }}ms</text>
+              <div class="step-btn" onclick="incJsPoll">
+                <text class="step-btn-text">+</text>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- 卡片：显示调试输出 -->
-        <div class="card" onclick="onToggleShowDebug">
-          <div class="card-texts">
-            <text class="card-title">显示调试输出</text>
-            <text class="card-sub">在界面上显示 Lua / IPC 调试信息</text>
-          </div>
-          <div class="switch {{ showDebug ? 'switch-on' : 'switch-off' }}">
-            <div class="switch-knob"></div>
+        <div class="section">
+          <text class="section-title">界面</text>
+
+          <div class="card" onclick="onToggleTransitions">
+            <div class="card-texts">
+              <text class="card-title lines-1">页面过渡动画</text>
+              <text class="card-sub lines-2">进入/退出页面的缩放淡入动画</text>
+            </div>
+            <div class="switch {{ transitionsEnabled ? 'switch-on' : 'switch-off' }}">
+              <div class="switch-knob"></div>
+            </div>
           </div>
         </div>
 
-        <!-- 危险操作按钮 -->
-        <div class="danger-btn" onclick="onClickReset">
-          <text class="danger-text">重置规则与白名单</text>
+        <div class="section">
+          <text class="section-title">关于应用</text>
+
+          <div class="info-card">
+            <div class="info-row">
+              <text class="info-key">名称</text>
+              <text class="info-val lines-1">{{ appNameText }}</text>
+            </div>
+            <div class="info-row">
+              <text class="info-key">包名</text>
+              <text class="info-val lines-1">{{ appPackageText }}</text>
+            </div>
+            <div class="info-row">
+              <text class="info-key">版本</text>
+              <text class="info-val lines-1">{{ appVersionText }}</text>
+            </div>
+            <div class="info-row">
+              <text class="info-key">开发者</text>
+              <text class="info-val lines-1">{{ developerNameText || '未设置' }}</text>
+            </div>
+            <div class="info-row">
+              <text class="info-key">联系</text>
+              <text class="info-val lines-1">{{ developerContactText || '—' }}</text>
+            </div>
+          </div>
+
+          <div class="card" onclick="openDevModal">
+            <div class="card-texts">
+              <text class="card-title lines-1">开发者信息</text>
+              <text class="card-sub lines-2">{{ developerSummary }}</text>
+            </div>
+            <image class="arrow" src="/resources/image/right_arrow.png"></image>
+          </div>
+
+          <div class="action-row">
+            <div class="action-btn action-btn-primary {{ isCheckingUpdate ? 'action-btn-busy' : '' }}" onclick="checkUpdate">
+              <text class="action-btn-text">{{ isCheckingUpdate ? '检查中...' : '检查更新' }}</text>
+            </div>
+          </div>
         </div>
 
+        <div class="blank"></div>
       </scroll>
+
+      <!-- 黑名单弹窗 -->
+      <div class="modal-mask {{ modalAnim }}" show="{{ showBlacklist }}">
+        <div class="modal">
+          <text class="modal-title lines-1">黑名单命令</text>
+          <text class="modal-sub lines-2">启用后，这些命令会被 Daemon 拒绝执行</text>
+
+          <scroll class="modal-list" scroll-y="true" bounces="true">
+            <div class="preset-row" for="{{ presetItems }}" tid="key" onclick="toggleBlacklistPreset($item.key)">
+              <div class="preset-texts">
+                <text class="preset-title lines-1">{{ $item.key }}</text>
+                <text class="preset-sub lines-1">{{ $item.desc }}</text>
+              </div>
+              <div class="switch {{ $item.enabled ? 'switch-on' : 'switch-off' }}">
+                <div class="switch-knob"></div>
+              </div>
+            </div>
+
+            <div class="empty" if="{{ customBlacklistText }}">
+              <text class="empty-title">自定义规则</text>
+              <text class="empty-sub lines-3">{{ customBlacklistText }}</text>
+            </div>
+
+            <div class="empty" if="{{ !presetItems || !presetItems.length }}">
+              <text class="empty-title">暂无预设</text>
+              <text class="empty-sub">当前设备不支持编辑文本，仅提供预设开关</text>
+            </div>
+
+            <div class="modal-blank"></div>
+          </scroll>
+
+          <div class="modal-actions">
+            <div class="modal-btn" onclick="closeBlacklist">
+              <text class="modal-btn-text">取消</text>
+            </div>
+            <div class="modal-btn modal-btn-primary {{ isSavingBlacklist ? 'modal-btn-busy' : '' }}" onclick="saveBlacklist">
+              <text class="modal-btn-text">{{ isSavingBlacklist ? '保存中...' : '保存' }}</text>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 开发者信息弹窗 -->
+      <div class="modal-mask {{ devModalAnim }}" show="{{ showDevModal }}">
+        <div class="modal">
+          <text class="modal-title lines-1">开发者信息</text>
+          <text class="modal-sub lines-2">用于“关于应用”展示（本地保存）</text>
+
+          <div class="form">
+            <text class="form-label">开发者</text>
+            <input class="form-input" value="{{ devNameInput }}" placeholder="例如：Aiden" @change="onDevNameChange"></input>
+
+            <text class="form-label">联系</text>
+            <input class="form-input" value="{{ devContactInput }}" placeholder="邮箱/QQ/群号" @change="onDevContactChange"></input>
+
+            <text class="form-label">更新地址</text>
+            <input class="form-input" value="{{ updateUrlInput }}" placeholder="https://..." @change="onUpdateUrlChange"></input>
+          </div>
+
+          <div class="modal-actions">
+            <div class="modal-btn" onclick="closeDevModal">
+              <text class="modal-btn-text">取消</text>
+            </div>
+            <div class="modal-btn modal-btn-primary {{ isSavingDev ? 'modal-btn-busy' : '' }}" onclick="saveDevInfo">
+              <text class="modal-btn-text">{{ isSavingDev ? '保存中...' : '保存' }}</text>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -55,27 +204,148 @@
 <script>
 import prompt from "@system.prompt";
 import router from "@system.router";
+import app from "@system.app";
+import suIpc from "../su-ipc.js";
+import { getCachedTransitionsEnabled, getLocalSettings, updateLocalSettings } from "../app-settings.js";
+
+const BLACKLIST_PRESETS = [
+  { key: "rm", desc: "删除文件/目录" },
+  { key: "reboot", desc: "重启设备" },
+  { key: "shutdown", desc: "关机/重启相关" },
+  { key: "poweroff", desc: "关机" },
+  { key: "mkfs", desc: "格式化文件系统" },
+  { key: "dd", desc: "原始写入（高风险）" },
+  { key: "mount", desc: "挂载文件系统" },
+  { key: "umount", desc: "卸载文件系统" },
+  { key: "kill", desc: "结束进程" },
+  { key: "killall", desc: "结束多个进程" },
+];
+
+function clampInt(n, minv, maxv, fallback) {
+  const v = Math.floor(Number(n));
+  if (!isFinite(v)) return fallback;
+  if (v < minv) return minv;
+  if (v > maxv) return maxv;
+  return v;
+}
+
+function uniqStrings(list) {
+  const out = [];
+  const seen = {};
+  (Array.isArray(list) ? list : []).forEach((it) => {
+    const s = String(it == null ? "" : it).trim();
+    if (!s) return;
+    if (seen[s]) return;
+    seen[s] = true;
+    out.push(s);
+  });
+  return out;
+}
+
+function buildSummary(list) {
+  const arr = uniqStrings(list);
+  if (!arr.length) return "未启用";
+  if (arr.length <= 3) return `已启用：${arr.join(", ")}`;
+  return `已启用：${arr.slice(0, 3).join(", ")} 等 ${arr.length} 条`;
+}
+
+function callAppGetInfo() {
+  return new Promise((resolve) => {
+    try {
+      app.getInfo({
+        success: (info) => resolve(info || {}),
+        fail: () => resolve({}),
+      });
+    } catch (_) {
+      resolve({});
+    }
+  });
+}
+
+function safeStr(v) {
+  if (v == null) return "";
+  return String(v);
+}
+
+function buildDeveloperSummary(name, contact, url) {
+  const n = safeStr(name).trim();
+  const c = safeStr(contact).trim();
+  const u = safeStr(url).trim();
+  if (!n && !c && !u) return "未设置（点击填写）";
+  const parts = [];
+  if (n) parts.push(n);
+  if (c) parts.push(c);
+  if (u) parts.push("更新地址已设置");
+  return parts.join(" · ");
+}
+
+function readInputValue(e) {
+  try {
+    if (e && e.value != null) return safeStr(e.value);
+    if (e && e.detail && e.detail.value != null) return safeStr(e.detail.value);
+  } catch (_) {}
+  return "";
+}
 
 export default {
   data: {
-    confirmDanger: true,
-    saveHistory: true,
-    showDebug: false,
+    // local settings
+    transitionsEnabled: getCachedTransitionsEnabled(),
+    jsPollMs: 200,
 
-    // 页面动画状态
+    // daemon settings
+    saveHistory: true,
+    daemonPollMs: 300,
+    cmdBlacklist: [],
+    blacklistSummary: "未启用",
+
+    // app info
+    appNameText: "",
+    appPackageText: "",
+    appVersionText: "",
+    developerNameText: "",
+    developerContactText: "",
+    updateUrlText: "",
+    developerSummary: "未设置（点击填写）",
+    isCheckingUpdate: false,
+
+    // modal
+    showBlacklist: false,
+    modalAnim: "",
+    isSavingBlacklist: false,
+    presetItems: [],
+    blacklistDraft: [],
+    customBlacklistText: "",
+
+    // dev modal
+    showDevModal: false,
+    devModalAnim: "",
+    isSavingDev: false,
+    devNameInput: "",
+    devContactInput: "",
+    updateUrlInput: "",
+
+    // page anim
     animClass: "",
     isLeaving: false,
   },
 
-  onShow() {
+  async onShow() {
     this.$broadcast("page-on-show", {});
 
-    // 进入动画
+    // 先把页面显示出来，避免异步加载期间 page-anim 透明导致白屏
+    this.transitionsEnabled = getCachedTransitionsEnabled();
     this.isLeaving = false;
     this.animClass = "";
     setTimeout(() => {
-      this.animClass = "page-enter";
+      this.animClass = this.transitionsEnabled ? "page-enter" : "page-static";
     }, 0);
+
+    this.loadLocalSettings().then(() => {
+      if (!this.transitionsEnabled) this.animClass = "page-static";
+    });
+    this.loadAppInfo();
+    this.loadDaemonSettings();
   },
 
   // 返回时加退出动画
@@ -84,37 +354,302 @@ export default {
       return true;
     }
 
+    if (!this.transitionsEnabled) {
+      router.back();
+      return true;
+    }
+
     this.isLeaving = true;
     this.animClass = "page-leave";
-
-    setTimeout(() => {
-      router.back();
-    }, 180);
+    setTimeout(() => router.back(), 180);
 
     return true;
   },
 
-  onToggleConfirmDanger() {
-    this.confirmDanger = !this.confirmDanger;
-    console.log("危险命令确认:", this.confirmDanger);
-    // TODO: 在这里写入配置文件 / 发 IPC
+  async loadLocalSettings() {
+    try {
+      const local = await getLocalSettings();
+      this.transitionsEnabled = !!(local && local.ui && local.ui.enableTransitions);
+      this.jsPollMs = clampInt(local && local.ipc ? local.ipc.jsPollIntervalMs : 200, 50, 2000, 200);
+      const about = (local && local.about && typeof local.about === "object") ? local.about : {};
+      this.developerNameText = safeStr(about.developerName).trim();
+      this.developerContactText = safeStr(about.developerContact).trim();
+      this.updateUrlText = safeStr(about.updateUrl).trim();
+      this.developerSummary = buildDeveloperSummary(this.developerNameText, this.developerContactText, this.updateUrlText);
+    } catch (_) {
+      this.transitionsEnabled = true;
+      this.jsPollMs = 200;
+      this.developerNameText = "";
+      this.developerContactText = "";
+      this.updateUrlText = "";
+      this.developerSummary = buildDeveloperSummary("", "", "");
+    }
   },
 
-  onToggleSaveHistory() {
-    this.saveHistory = !this.saveHistory;
-    console.log("记录命令历史:", this.saveHistory);
+  async loadAppInfo() {
+    const info = await callAppGetInfo();
+    this.appNameText = String(info.name || info.appName || info.displayName || "—");
+    this.appPackageText = String(info.packageName || info.package || "—");
+    const vn = info.versionName || info.version || "";
+    const vc = info.versionCode != null ? String(info.versionCode) : "";
+    if (vn && vc) this.appVersionText = `${vn} (${vc})`;
+    else if (vn) this.appVersionText = String(vn);
+    else this.appVersionText = "—";
   },
 
-  onToggleShowDebug() {
-    this.showDebug = !this.showDebug;
-    console.log("显示调试信息:", this.showDebug);
+  async loadDaemonSettings() {
+    try {
+      const resp = await suIpc.management("get_settings", {}, { timeoutMs: 1400 });
+      const data = resp && resp.ok ? resp.data : null;
+      const saveHistory = data && typeof data.save_history === "boolean" ? data.save_history : true;
+      const daemonPoll = data && data.daemon_poll_interval_ms != null ? data.daemon_poll_interval_ms : 300;
+      const bl = data && Array.isArray(data.cmd_blacklist) ? data.cmd_blacklist : [];
+
+      this.saveHistory = !!saveHistory;
+      this.daemonPollMs = clampInt(daemonPoll, 50, 2000, 300);
+      this.cmdBlacklist = uniqStrings(bl);
+      this.blacklistSummary = buildSummary(this.cmdBlacklist);
+    } catch (e) {
+      this.blacklistSummary = buildSummary(this.cmdBlacklist);
+      prompt.showToast({ message: "Daemon 未就绪", duration: 700 });
+    }
   },
 
-  onClickReset() {
-    prompt.showToast({
-      message: "重置规则和白名单（未实现）",
-      duration: 800,
+  async applyDaemonSettings(patch) {
+    const resp = await suIpc.management("set_settings", patch || {}, { timeoutMs: 1800 });
+    if (!resp || resp.ok !== true) {
+      throw new Error((resp && resp.message) || "set_settings failed");
+    }
+    const data = resp.data || {};
+    if (typeof data.save_history === "boolean") this.saveHistory = !!data.save_history;
+    if (data.daemon_poll_interval_ms != null) this.daemonPollMs = clampInt(data.daemon_poll_interval_ms, 50, 2000, this.daemonPollMs);
+    if (Array.isArray(data.cmd_blacklist)) {
+      this.cmdBlacklist = uniqStrings(data.cmd_blacklist);
+      this.blacklistSummary = buildSummary(this.cmdBlacklist);
+    }
+  },
+
+  async onToggleSaveHistory() {
+    const next = !this.saveHistory;
+    this.saveHistory = next;
+    try {
+      await this.applyDaemonSettings({ save_history: next });
+      prompt.showToast({ message: next ? "已开启记录" : "已关闭记录", duration: 650 });
+    } catch (e) {
+      this.saveHistory = !next;
+      prompt.showToast({ message: e && e.message ? e.message : "设置失败", duration: 900 });
+    }
+  },
+
+  async onToggleTransitions() {
+    const next = !this.transitionsEnabled;
+    this.transitionsEnabled = next;
+    if (!next) this.animClass = "page-static";
+    try {
+      await updateLocalSettings({ ui: { enableTransitions: next } });
+      prompt.showToast({ message: next ? "动画已开启" : "动画已关闭", duration: 650 });
+    } catch (e) {
+      this.transitionsEnabled = !next;
+      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
+    }
+  },
+
+  async decDaemonPoll() {
+    const next = clampInt(this.daemonPollMs - 50, 50, 2000, 300);
+    if (next === this.daemonPollMs) return;
+    const prev = this.daemonPollMs;
+    this.daemonPollMs = next;
+    try {
+      await this.applyDaemonSettings({ daemon_poll_interval_ms: next });
+    } catch (e) {
+      this.daemonPollMs = prev;
+      prompt.showToast({ message: e && e.message ? e.message : "设置失败", duration: 900 });
+    }
+  },
+
+  async incDaemonPoll() {
+    const next = clampInt(this.daemonPollMs + 50, 50, 2000, 300);
+    if (next === this.daemonPollMs) return;
+    const prev = this.daemonPollMs;
+    this.daemonPollMs = next;
+    try {
+      await this.applyDaemonSettings({ daemon_poll_interval_ms: next });
+    } catch (e) {
+      this.daemonPollMs = prev;
+      prompt.showToast({ message: e && e.message ? e.message : "设置失败", duration: 900 });
+    }
+  },
+
+  async decJsPoll() {
+    const next = clampInt(this.jsPollMs - 50, 50, 2000, 200);
+    if (next === this.jsPollMs) return;
+    this.jsPollMs = next;
+    try {
+      await updateLocalSettings({ ipc: { jsPollIntervalMs: next } });
+    } catch (e) {
+      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
+    }
+  },
+
+  async incJsPoll() {
+    const next = clampInt(this.jsPollMs + 50, 50, 2000, 200);
+    if (next === this.jsPollMs) return;
+    this.jsPollMs = next;
+    try {
+      await updateLocalSettings({ ipc: { jsPollIntervalMs: next } });
+    } catch (e) {
+      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
+    }
+  },
+
+  openBlacklist() {
+    this.blacklistDraft = uniqStrings(this.cmdBlacklist);
+    this.updatePresetItems();
+    this.customBlacklistText = this.getCustomBlacklistText();
+    this.showBlacklist = true;
+    this.modalAnim = "";
+    setTimeout(() => {
+      this.modalAnim = "modal-enter";
+    }, 0);
+  },
+
+  closeBlacklist() {
+    this.modalAnim = "modal-leave";
+    setTimeout(() => {
+      this.showBlacklist = false;
+    }, 180);
+  },
+
+  updatePresetItems() {
+    const set = {};
+    (Array.isArray(this.blacklistDraft) ? this.blacklistDraft : []).forEach((x) => {
+      const s = String(x == null ? "" : x).trim();
+      if (s) set[s] = true;
     });
+    this.presetItems = BLACKLIST_PRESETS.map((it) => ({
+      key: it.key,
+      desc: it.desc,
+      enabled: !!set[it.key],
+    }));
+  },
+
+  getCustomBlacklistText() {
+    const presetSet = {};
+    BLACKLIST_PRESETS.forEach((it) => {
+      presetSet[it.key] = true;
+    });
+    const custom = (Array.isArray(this.cmdBlacklist) ? this.cmdBlacklist : []).filter((x) => x && !presetSet[x]);
+    if (!custom.length) return "";
+    if (custom.length <= 6) return custom.join(", ");
+    return `${custom.slice(0, 6).join(", ")} 等 ${custom.length} 条`;
+  },
+
+  toggleBlacklistPreset(key) {
+    const k = String(key == null ? "" : key).trim();
+    if (!k) return;
+
+    const set = {};
+    (Array.isArray(this.blacklistDraft) ? this.blacklistDraft : []).forEach((x) => {
+      const s = String(x == null ? "" : x).trim();
+      if (s) set[s] = true;
+    });
+
+    if (set[k]) delete set[k];
+    else set[k] = true;
+
+    const next = Object.keys(set);
+    next.sort();
+    this.blacklistDraft = next;
+    this.updatePresetItems();
+  },
+
+  async saveBlacklist() {
+    if (this.isSavingBlacklist) return;
+    this.isSavingBlacklist = true;
+    try {
+      await this.applyDaemonSettings({ cmd_blacklist: this.blacklistDraft });
+      prompt.showToast({ message: "已保存", duration: 650 });
+      this.closeBlacklist();
+    } catch (e) {
+      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
+    } finally {
+      this.isSavingBlacklist = false;
+    }
+  },
+
+  async checkUpdate() {
+    if (this.isCheckingUpdate) return;
+    this.isCheckingUpdate = true;
+    try {
+      await new Promise((r) => setTimeout(r, 350));
+      prompt.showToast({
+        message:
+          this.updateUrlText
+            ? `当前版本：${this.appVersionText || "—"}\n更新：${this.updateUrlText}`
+            : `当前版本：${this.appVersionText || "—"}（未设置更新地址）`,
+        duration: 1100,
+      });
+    } finally {
+      this.isCheckingUpdate = false;
+    }
+  },
+
+  openDevModal() {
+    this.devNameInput = this.developerNameText || "";
+    this.devContactInput = this.developerContactText || "";
+    this.updateUrlInput = this.updateUrlText || "";
+
+    this.showDevModal = true;
+    this.devModalAnim = "";
+    setTimeout(() => {
+      this.devModalAnim = "modal-enter";
+    }, 0);
+  },
+
+  closeDevModal() {
+    this.devModalAnim = "modal-leave";
+    setTimeout(() => {
+      this.showDevModal = false;
+    }, 180);
+  },
+
+  onDevNameChange(e) {
+    this.devNameInput = readInputValue(e);
+  },
+
+  onDevContactChange(e) {
+    this.devContactInput = readInputValue(e);
+  },
+
+  onUpdateUrlChange(e) {
+    this.updateUrlInput = readInputValue(e);
+  },
+
+  async saveDevInfo() {
+    if (this.isSavingDev) return;
+    this.isSavingDev = true;
+    try {
+      const next = await updateLocalSettings({
+        about: {
+          developerName: this.devNameInput,
+          developerContact: this.devContactInput,
+          updateUrl: this.updateUrlInput,
+        },
+      });
+
+      const about = (next && next.about && typeof next.about === "object") ? next.about : {};
+      this.developerNameText = safeStr(about.developerName).trim();
+      this.developerContactText = safeStr(about.developerContact).trim();
+      this.updateUrlText = safeStr(about.updateUrl).trim();
+      this.developerSummary = buildDeveloperSummary(this.developerNameText, this.developerContactText, this.updateUrlText);
+
+      prompt.showToast({ message: "已保存", duration: 650 });
+      this.closeDevModal();
+    } catch (e) {
+      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
+    } finally {
+      this.isSavingDev = false;
+    }
   },
 };
 </script>
@@ -135,53 +670,106 @@ export default {
   flex: 1;
   width: 100%;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
+  padding-top: 6px;
 }
 
 /* 列表区域：略大一点，卡片更饱满 */
 .list {
-  width: 80%;
-  height: 78%;
+  flex: 1;
+  width: 88%;
   flex-direction: column;
   justify-content: flex-start;
   align-items: stretch;
+}
+
+/* 顶部标题 */
+.header {
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.header-icon {
+  width: 58px;
+  height: 58px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.header-title {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.header-sub {
+  color: #7a7a7a;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* 分区标题 */
+.section {
+  width: 100%;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  color: #aaaaaa;
+  font-size: 13px;
+  margin-left: 6px;
+  margin-bottom: 8px;
 }
 
 /* —— 设置卡片 —— */
 .card {
   width: 100%;
   background-color: #191919;
-  border-radius: 18px;
-  padding: 10px 14px;
+  border-radius: 20px;
+  padding: 12px 14px;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
+  border-width: 1px;
+  border-color: #2a2a2a;
 }
 
 .card-texts {
   flex-direction: column;
-  width: 70%;
+  flex: 1;
+  margin-right: 10px;
 }
 
 .card-title {
   color: #f2f2f2;
-  font-size: 15px;
-  font-weight: bold;
+  font-size: 16px;
+  font-weight: 900;
 }
 
 .card-sub {
   color: #888888;
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 2px;
+}
+
+/* 右侧箭头 */
+.arrow {
+  width: 18px;
+  height: 18px;
+  opacity: 0.8;
 }
 
 /* —— 自定义开关 —— */
 .switch {
-  width: 40px;
-  height: 22px;
-  border-radius: 11px;
+  width: 54px;
+  height: 30px;
+  border-radius: 15px;
   padding: 2px;
   flex-direction: row;
   align-items: center;
@@ -191,9 +779,9 @@ export default {
 
 /* 开关中的小圆点 */
 .switch-knob {
-  width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
   background-color: #ffffff;
 }
 
@@ -209,21 +797,282 @@ export default {
   justify-content: flex-start;
 }
 
-/* —— 危险按钮 —— */
-.danger-btn {
-  margin-top: 14px;
-  width: 100%;
-  background-color: #e44545;
-  border-radius: 20px;
-  justify-content: center;
+/* —— 步进器 —— */
+.stepper {
+  flex-direction: row;
   align-items: center;
-  padding: 10px 0;
+  justify-content: flex-end;
+  width: 126px;
 }
 
-.danger-text {
+.step-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 17px;
+  background-color: #2a2a2a;
+  justify-content: center;
+  align-items: center;
+}
+
+.step-btn-text {
   color: #ffffff;
-  font-size: 15px;
-  font-weight: bold;
+  font-size: 18px;
+  font-weight: 900;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.step-value {
+  width: 58px;
+  color: #f2f2f2;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* —— 关于应用 —— */
+.info-card {
+  width: 100%;
+  flex-direction: column;
+  background-color: #151515;
+  border-radius: 20px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.info-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 2px;
+}
+
+.info-key {
+  color: #7a7a7a;
+  font-size: 13px;
+  width: 36%;
+}
+
+.info-val {
+  color: #f2f2f2;
+  font-size: 13px;
+  width: 64%;
+  text-align: right;
+}
+
+.action-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.action-btn {
+  width: 100%;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #2a2a2a;
+  padding-left: 12px;
+  padding-right: 12px;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-btn-primary {
+  background-color: #00d36f;
+}
+
+.action-btn-busy {
+  opacity: 0.65;
+}
+
+.action-btn-text {
+  color: #f2f2f2;
+  font-size: 14px;
+  font-weight: 800;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.blank {
+  height: 120px;
+}
+
+/* 文本行数控制（text 组件是 style 属性，不是 attribute） */
+.lines-1 {
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.lines-2 {
+  lines: 2;
+  text-overflow: ellipsis;
+}
+
+.lines-3 {
+  lines: 3;
+  text-overflow: ellipsis;
+}
+
+/* —— 黑名单弹窗 —— */
+.modal-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.55);
+  justify-content: center;
+  align-items: center;
+  transform-origin: center center;
+}
+
+.modal {
+  width: 78%;
+  height: 64%;
+  border-radius: 18px;
+  background-color: rgba(25, 25, 25, 0.98);
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px 12px;
+}
+
+.modal-title {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.modal-sub {
+  color: #7a7a7a;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.form {
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+
+.form-label {
+  color: #aaaaaa;
+  font-size: 12px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.form-input {
+  width: 100%;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #141414;
+  padding-left: 12px;
+  padding-right: 12px;
+  color: #f2f2f2;
+  font-size: 13px;
+}
+
+.modal-list {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.preset-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 10px;
+  margin-bottom: 8px;
+  background-color: #141414;
+  border-radius: 16px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.preset-texts {
+  flex-direction: column;
+  width: 74%;
+}
+
+.preset-title {
+  color: #f2f2f2;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.preset-sub {
+  color: #7a7a7a;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.empty {
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 6px;
+}
+
+.empty-title {
+  color: #aaaaaa;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.empty-sub {
+  color: #7a7a7a;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.modal-blank {
+  height: 120px;
+}
+
+.modal-actions {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.modal-btn {
+  width: 46%;
+  height: 34px;
+  border-radius: 18px;
+  justify-content: center;
+  align-items: center;
+  background-color: #2a2a2a;
+}
+
+.modal-btn-primary {
+  background-color: #00d36f;
+}
+
+.modal-btn-busy {
+  opacity: 0.65;
+}
+
+.modal-btn-text {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  lines: 1;
+  text-overflow: ellipsis;
 }
 
 /* —— 页面动画 —— */
@@ -231,6 +1080,11 @@ export default {
   opacity: 0;
   transform: scale(0.8);
   transform-origin: center center;
+}
+
+.page-static {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .page-enter {
@@ -255,5 +1109,32 @@ export default {
 @keyframes pageOut {
   0% { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(0.8); }
+}
+
+/* 弹窗动画 */
+.modal-enter {
+  animation-name: modalIn;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+.modal-leave {
+  animation-name: modalOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+@keyframes modalIn {
+  0% { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes modalOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.92); }
 }
 </style>

@@ -285,6 +285,7 @@
 import router from "@system.router";
 import { refreshBasicInfo } from "./about-basic.js";
 import { refreshHardwareInfo } from "./about-shell.js";
+import { getCachedTransitionsEnabled, getLocalSettings } from "../app-settings.js";
 
 export default {
   data: {
@@ -363,6 +364,7 @@ export default {
     detailAnim: "",
 
     // 页面动画状态
+    transitionsEnabled: true,
     animClass: "",
     isLeaving: false,
   },
@@ -370,11 +372,17 @@ export default {
   onShow() {
     this.$broadcast("page-on-show", {});
 
+    this.transitionsEnabled = getCachedTransitionsEnabled();
     this.isLeaving = false;
     this.animClass = "";
     setTimeout(() => {
-      this.animClass = "page-enter";
+      this.animClass = this.transitionsEnabled ? "page-enter" : "page-static";
     }, 0);
+    getLocalSettings().then((local) => {
+      const enabled = !!(local && local.ui && local.ui.enableTransitions);
+      this.transitionsEnabled = enabled;
+      if (!enabled) this.animClass = "page-static";
+    });
 
     // 进入页自动刷新（动态信息每次刷新，静态 Shell 走缓存）
     this.refreshAll("enter");
@@ -383,6 +391,10 @@ export default {
   onBackPress() {
     if (this.showDetail) {
       this.closeDetail();
+      return true;
+    }
+    if (!this.transitionsEnabled) {
+      router.back();
       return true;
     }
     if (this.isLeaving) return true;
@@ -962,6 +974,11 @@ export default {
   opacity: 0;
   transform: scale(0.8);
   transform-origin: center center;
+}
+
+.page-static {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .page-enter {

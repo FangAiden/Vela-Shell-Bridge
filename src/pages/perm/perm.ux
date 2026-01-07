@@ -36,9 +36,18 @@
 import prompt from "@system.prompt";
 import router from "@system.router";
 import app from "@system.app";
+import file from "@system.file";
 import suIpc from "../su-ipc.js";
+import { getCachedTransitionsEnabled, getLocalSettings } from "../app-settings.js";
 
-const QUICKAPP_ABS_BASE = "/data/files/";
+const DEFAULT_QUICKAPP_ABS_ROOT = "/data/files/";
+const DEFAULT_ADMIN_FILES_DIR = "/data/files/com.lua.dev.template/";
+
+function normalizeAbsBase(p) {
+	const s = String(p == null ? "" : p).trim();
+	if (!s) return DEFAULT_QUICKAPP_ABS_ROOT;
+	return s.endsWith("/") ? s : `${s}/`;
+}
 
 function pad2(n) {
 	const s = String(n == null ? "" : n);
@@ -49,10 +58,46 @@ function shQuote(s) {
 	return `"${String(s == null ? "" : s).replace(/"/g, '\\"')}"`;
 }
 
-function parseIcon(raw) {
-	if (typeof raw !== "string") return null;
-	let s = raw.trim();
-	if (!s) return null;
+function fileGetMeta(uri, timeoutMs = 800) {
+	return new Promise((resolve) => {
+		let done = false;
+		const t = setTimeout(() => {
+			if (done) return;
+			done = true;
+			resolve(null);
+		}, timeoutMs);
+
+		try {
+			file.get({
+				uri,
+				recursive: false,
+				success: (data) => {
+					if (done) return;
+					done = true;
+					clearTimeout(t);
+					resolve(data || null);
+				},
+				fail: () => {
+					if (done) return;
+					done = true;
+					clearTimeout(t);
+					resolve(null);
+				},
+				complete: () => {},
+			});
+		} catch (_) {
+			if (done) return;
+			done = true;
+			clearTimeout(t);
+			resolve(null);
+		}
+	});
+}
+
+	function parseIcon(raw) {
+		if (typeof raw !== "string") return null;
+		let s = raw.trim();
+		if (!s) return null;
 
 	if (s.startsWith("internal://files/")) {
 		s = s.slice("internal://files/".length);
@@ -90,23 +135,44 @@ export default {
 		stats: {},
 		appMeta: {},
 		selfAppId: "",
+		quickappAbsRoot: DEFAULT_QUICKAPP_ABS_ROOT,
+		adminFilesDirAbs: DEFAULT_ADMIN_FILES_DIR,
 		isLoading: false,
 		isUpdating: false,
 
 		// ? 动画状态
+		transitionsEnabled: true,
 		animClass: "",
 		isLeaving: false,
+	},
+
+	normalizeRemoteMeta(rawMeta) {
+		const out = {};
+		const m = rawMeta && typeof rawMeta === "object" ? rawMeta : {};
+		Object.keys(m).forEach((appId) => {
+			const it = m[appId] && typeof m[appId] === "object" ? m[appId] : {};
+			const name = it && it.name ? String(it.name) : "";
+			const iconRaw = it && it.icon ? String(it.icon) : "";
+			out[appId] = { name, icon: parseIcon(iconRaw) };
+		});
+		return out;
 	},
 
 	async onShow() {
 		this.$broadcast("page-on-show", {});
 
 		// 进入动画：先清空，再下一帧加上
+		this.transitionsEnabled = getCachedTransitionsEnabled();
 		this.isLeaving = false;
 		this.animClass = "";
 		setTimeout(() => {
-			this.animClass = "page-enter";
+			this.animClass = this.transitionsEnabled ? "page-enter" : "page-static";
 		}, 0);
+		getLocalSettings().then((local) => {
+			const enabled = !!(local && local.ui && local.ui.enableTransitions);
+			this.transitionsEnabled = enabled;
+			if (!enabled) this.animClass = "page-static";
+		});
 
 		await this.refresh();
 	},
@@ -169,11 +235,12 @@ export default {
 		}
 	},
 
-	async prepareIcons(appIds, meta, selfId) {
-		if (!selfId) return {};
+	async prepareIcons(appIds, meta, selfId, quickappAbsRoot, adminFilesDirAbs) {
 		if (!Array.isArray(appIds) || !appIds.length) return {};
 
-		const baseDestAbs = `${QUICKAPP_ABS_BASE}${selfId}/perm_icons`;
+		const rootAbs = normalizeAbsBase(quickappAbsRoot);
+		const adminAbs = normalizeAbsBase(adminFilesDirAbs);
+		const baseDestAbs = `${adminAbs}perm_icons`;
 		const lines = [`mkdir -p ${shQuote(baseDestAbs)}`];
 
 		const iconMap = {};
@@ -184,9 +251,7 @@ export default {
 			const icon = m && m.icon ? m.icon : null;
 			if (!icon || !icon.fileName) continue;
 
-			const srcAbs = icon.abs
-				? icon.abs
-				: `${QUICKAPP_ABS_BASE}${appId}/${icon.rel}`;
+			const srcAbs = icon.abs ? icon.abs : `${rootAbs}${appId}/${icon.rel}`;
 
 			const destDirAbs = `${baseDestAbs}/${appId}`;
 			const destAbs = `${destDirAbs}/${icon.fileName}`;
@@ -224,19 +289,47 @@ export default {
 		return iconMap;
 	},
 
+	async resolveIconUris(appIds, iconMap) {
+		const out = {};
+		if (!Array.isArray(appIds) || !appIds.length) return out;
+		if (!iconMap || typeof iconMap !== "object") return out;
+
+		for (let i = 0; i < appIds.length; i++) {
+			const appId = appIds[i];
+			const iconFile = appId && iconMap[appId] ? String(iconMap[appId]) : "";
+			if (!appId || !iconFile) continue;
+			const uri = `internal://files/perm_icons/${appId}/${iconFile}`;
+			const meta = await fileGetMeta(uri, 800);
+			if (meta && meta.uri) out[appId] = String(meta.uri);
+		}
+
+		return out;
+	},
+
 	async refresh() {
 		if (this.isLoading) return;
 		this.isLoading = true;
 		try {
 			const selfId = await this.getSelfAppId();
 
-			const [apps, allowlist, policies, logs, meta] = await Promise.all([
-				suIpc.scanApps(),
+			const [env, scan, allowlist, policies, logs] = await Promise.all([
+				suIpc.getEnv().catch(() => ({})),
+				suIpc.scanAppsInfo(),
 				suIpc.getAllowlist(),
 				suIpc.getPolicies(),
 				suIpc.getLogs(),
-				this.tryLoadAppsMeta(),
 			]);
+
+			const root = env && (env.quickapp_root || env.quickapp_base);
+			const adminDir = env && env.admin_files_dir;
+			this.quickappAbsRoot = normalizeAbsBase(root);
+			this.adminFilesDirAbs = normalizeAbsBase(
+				adminDir || (selfId ? `${this.quickappAbsRoot}${selfId}` : DEFAULT_ADMIN_FILES_DIR)
+			);
+
+			const apps = scan && Array.isArray(scan.apps) ? scan.apps : [];
+			const remoteMeta = scan && scan.meta ? scan.meta : {};
+			const meta = this.normalizeRemoteMeta(remoteMeta);
 
 			this.allowlist = Array.isArray(allowlist) ? allowlist : [];
 			this.policies = policies || {};
@@ -244,7 +337,14 @@ export default {
 			this.appMeta = meta || {};
 
 			const appIds = (Array.isArray(apps) ? apps : []).filter((id) => id && id !== selfId);
-			const iconMap = await this.prepareIcons(appIds, this.appMeta, selfId);
+			const iconMap = await this.prepareIcons(
+				appIds,
+				this.appMeta,
+				selfId,
+				this.quickappAbsRoot,
+				this.adminFilesDirAbs
+			);
+			const iconUris = await this.resolveIconUris(appIds, iconMap);
 
 			const allowSet = new Set(this.allowlist || []);
 
@@ -257,10 +357,7 @@ export default {
 					const isAllowed = allowSet.has(appId) && policy === "allow";
 					const m = this.appMeta && this.appMeta[appId] ? this.appMeta[appId] : {};
 					const title = m && m.name ? m.name : appId;
-					const iconFile = iconMap && iconMap[appId] ? iconMap[appId] : "";
-					const image = iconFile
-						? `internal://files/perm_icons/${appId}/${iconFile}`
-						: "/resources/image/perm.png";
+					const image = iconUris && iconUris[appId] ? iconUris[appId] : "/resources/image/perm.png";
 
 					return {
 						title,
@@ -292,6 +389,10 @@ export default {
 
 	// ? 返回时：先播放退出动画，再真正 back
 	onBackPress() {
+		if (!this.transitionsEnabled) {
+			router.back();
+			return true;
+		}
 		if (this.isLeaving) {
 			return true; // 已在退场，拦截默认返回
 		}
@@ -365,6 +466,11 @@ export default {
 	opacity: 0;
 	transform: scale(0.8);
 	transform-origin: center center;
+}
+
+.page-static {
+	opacity: 1;
+	transform: scale(1);
 }
 
 /* 进入动画：中心放大 + 淡入 */
