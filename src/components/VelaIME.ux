@@ -764,7 +764,7 @@ export default {
           this.status = 1
           break
         default:
-          if (this.textbox.length < 14) {
+          if (this.textbox.length < 80) {
             this.textbox += key
           }
           break

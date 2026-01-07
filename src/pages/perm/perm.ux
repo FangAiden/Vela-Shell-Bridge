@@ -251,40 +251,19 @@ export default {
 			const icon = m && m.icon ? m.icon : null;
 			if (!icon || !icon.fileName) continue;
 
+			iconMap[appId] = icon.fileName;
 			const srcAbs = icon.abs ? icon.abs : `${rootAbs}${appId}/${icon.rel}`;
 
 			const destDirAbs = `${baseDestAbs}/${appId}`;
 			const destAbs = `${destDirAbs}/${icon.fileName}`;
 
 			lines.push(`mkdir -p ${shQuote(destDirAbs)}`);
-			lines.push(`if [ -f ${shQuote(destAbs)} ]`);
-			lines.push("then");
-			lines.push(`  echo ICON_OK:${appId}:${icon.fileName}`);
-			lines.push("else");
-			lines.push(`  if [ -f ${shQuote(srcAbs)} ]`);
-			lines.push("  then");
-			lines.push(`    if cp ${shQuote(srcAbs)} ${shQuote(destAbs)}`);
-			lines.push("    then");
-			lines.push(`      echo ICON_OK:${appId}:${icon.fileName}`);
-			lines.push("    fi");
-			lines.push("  fi");
-			lines.push("fi");
+			lines.push(`cp ${shQuote(srcAbs)} ${shQuote(destAbs)}`);
 		}
 
 		if (lines.length <= 1) return iconMap;
 		try {
-			const res = await suIpc.exec(lines.join("\n"), { sync: true, timeoutMs: 8000 });
-			const out = res && typeof res.output === "string" ? res.output : "";
-			out.split(/\r?\n/).forEach((line) => {
-				const t = String(line || "").trim();
-				if (!t.startsWith("ICON_OK:")) return;
-				const parts = t.split(":");
-				if (parts.length < 3) return;
-				const appId = parts[1];
-				const fileName = parts.slice(2).join(":");
-				if (!appId || !fileName) return;
-				iconMap[appId] = fileName;
-			});
+			await suIpc.exec(lines.join("\n"), { sync: true, timeoutMs: 8000 });
 		} catch (_) {}
 		return iconMap;
 	},

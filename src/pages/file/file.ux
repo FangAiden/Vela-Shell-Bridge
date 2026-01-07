@@ -1,5 +1,6 @@
 <import name="time-bar" src="../../components/timeBar"></import>
 <import name="item" src="./components/item"></import>
+<import name="ime" src="../../components/VelaIME.ux"></import>
 
 <template>
   <div class="root">
@@ -22,12 +23,12 @@
         <div class="navbar">
           <marquee
             style="font-size: 26px; color: #99999a; width: 70%; font-weight: bold;"
-            @click="navigate"
-          >/data/quickapp/</marquee>
+            onclick="navigate"
+          >{{ currentPath }}</marquee>
           <image
             src="/resources/image/back.png"
             style="width: 36px; height: 36px;"
-            @click="previous"
+            onclick="previous"
           />
         </div>
 
@@ -55,12 +56,12 @@
         <div class="navbar sticky-navbar">
           <marquee
             style="font-size: 26px; color: #99999a; width: 70%; font-weight: bold;"
-            @click="navigate"
-          >/data/quickapp/</marquee>
+            onclick="navigate"
+          >{{ currentPath }}</marquee>
           <image
             src="/resources/image/back.png"
             style="width: 36px; height: 36px;"
-            @click="previous"
+            onclick="previous"
           />
         </div>
       </div>
@@ -124,6 +125,17 @@
 
       <!-- 时间条 -->
       <time-bar />
+
+      <!-- 输入法 -->
+        <div class="ime-layer" if="{{ showIme }}">
+          <div class="ime-header">
+            <text class="ime-title">{{ imeTitle }}</text>
+            <div class="ime-close" onclick="closeIme">
+              <text class="ime-close-text">取消</text>
+            </div>
+          </div>
+        <ime hide="{{ false }}" inputbox="{{ imeInput }}" @press="onImePress"></ime>
+      </div>
     </stack>
   </div>
 </template>
@@ -131,46 +143,130 @@
 <script>
 import prompt from "@system.prompt";
 import router from "@system.router";
+import suIpc from "../su-ipc.js";
 import { getCachedTransitionsEnabled, getLocalSettings } from "../app-settings.js";
+
+function shellEscape(text) {
+  const s = String(text == null ? "" : text);
+  if (!s) return "''";
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+function normalizePath(p) {
+  let s = String(p == null ? "" : p).trim();
+  if (!s) return "/";
+  if (!s.startsWith("/")) s = `/${s}`;
+  s = s.replace(/\/+/g, "/");
+  if (s.length > 1) s = s.replace(/\/+$/, "");
+  return s;
+}
+
+function joinPath(base, name) {
+  const b = normalizePath(base);
+  if (b === "/") return `/${name}`;
+  return `${b}/${name}`;
+}
+
+function formatSize(bytes) {
+  const n = Number(bytes);
+  if (!isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function parseLsOutput(raw, basePath) {
+  const lines = String(raw == null ? "" : raw)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const out = [];
+  lines.forEach((line) => {
+    if (line.startsWith("total")) return;
+    if (line.endsWith(":")) return;
+
+    const parts = line.split(/\s+/);
+    let perm = "";
+    let size = NaN;
+    let namePart = "";
+
+    if (parts.length >= 9 && /^[dl-]/.test(parts[0])) {
+      // GNU/BSD ls -l / -la
+      perm = parts[0] || "";
+      size = parseInt(parts[4], 10);
+      namePart = parts.slice(8).join(" ") || parts[parts.length - 1] || "";
+    } else if (parts.length >= 3 && /^[dl-]/.test(parts[0])) {
+      // NuttX ls -l: "drwxrwxrwx 0 app/"
+      perm = parts[0] || "";
+      size = parseInt(parts[1], 10);
+      namePart = parts.slice(2).join(" ") || parts[parts.length - 1] || "";
+    } else {
+      // ls without -l
+      namePart = line;
+      perm = namePart.endsWith("/") ? "d" : "-";
+    }
+
+    if (!namePart || namePart === "." || namePart === "..") return;
+    let name = namePart;
+    if (name.includes(" -> ")) name = name.split(" -> ")[0];
+    if (name.endsWith("/")) name = name.slice(0, -1);
+    if (!name) return;
+
+    const isDir = perm[0] === "d" || namePart.endsWith("/");
+    const isLink = perm[0] === "l";
+    out.push({
+      title: name,
+      image: isDir ? "/resources/image/folder.png" : "/resources/image/file.png",
+      type: isDir ? "目录" : (isLink ? "链接" : "文件"),
+      info: isFinite(size) ? formatSize(size) : "—",
+      index: "0",
+      fullPath: joinPath(basePath, name),
+      isDir,
+    });
+  });
+
+  out.sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    return a.title.localeCompare(b.title);
+  });
+  out.forEach((item, idx) => {
+    item.index = String(idx);
+  });
+  return out;
+}
+
+function findEntry(list, index, title) {
+  const idx = String(index == null ? "" : index);
+  if (idx !== "") {
+    const hit = (Array.isArray(list) ? list : []).find((it) => String(it.index) === idx);
+    if (hit) return hit;
+  }
+  const name = String(title == null ? "" : title);
+  return (Array.isArray(list) ? list : []).find((it) => it && it.title === name) || null;
+}
 
 export default {
   data: {
-    fileList: [
-      {
-        title: "quickapp",
-        image: "/resources/image/folder.png",
-        type: "目录",
-        info: "12 个项目",
-        index: "0",
-      },
-      {
-        title: "logs",
-        image: "/resources/image/folder.png",
-        type: "目录",
-        info: "3 个项目",
-        index: "0",
-      },
-      {
-        title: "boot.log",
-        image: "/resources/image/file.png",
-        type: "文件",
-        info: "24 KB",
-        index: "1",
-      },
-      {
-        title: "config.lua",
-        image: "/resources/image/file.png",
-        type: "文件",
-        info: "3.2 KB",
-        index: "1",
-      },
-    ],
+    currentPath: "/data/quickapp",
+    fileList: [],
+    clipboard: null,
+    clipboardMode: "",
+    isBusy: false,
+
+    showIme: false,
+    imeMode: "",
+    imeTitle: "",
+    imeInput: "",
+    imeTarget: null,
 
     sticky: false,
     headerHeight: 140,
 
     showMenu: false,
     menuTarget: null,
+    menuTargetEntry: null,
 
     showConfirm: false,
 
@@ -199,9 +295,15 @@ export default {
       this.transitionsEnabled = enabled;
       if (!enabled) this.animClass = "page-static";
     });
+
+    this.refreshList(this.currentPath);
   },
 
   onBackPress() {
+    if (this.showIme) {
+      this.closeIme();
+      return true;
+    }
     if (!this.transitionsEnabled) {
       router.back();
       return true;
@@ -228,26 +330,139 @@ export default {
   },
 
   onButtonClick(evt) {
-    prompt.showToast({
-      message: "文件管理：" + evt.detail.index + " " + evt.detail.title,
-    });
+    const hit = findEntry(this.fileList, evt.detail.index, evt.detail.title);
+    if (!hit) return;
+    if (hit.isDir) {
+      this.refreshList(hit.fullPath);
+    } else {
+      this.showEntryDetail(hit);
+    }
   },
 
   previous() {
-    prompt.showToast({
-      message: "返回上一级目录",
-    });
+    const cur = normalizePath(this.currentPath);
+    if (cur === "/") {
+      prompt.showToast({ message: "已是根目录", duration: 600 });
+      return;
+    }
+    const trimmed = cur.replace(/\/+$/, "");
+    const lastIdx = trimmed.lastIndexOf("/");
+    const parent = lastIdx <= 0 ? "/" : trimmed.slice(0, lastIdx);
+    this.refreshList(parent);
   },
 
   navigate() {
-    prompt.showToast({
-      message: "导航到当前目录",
+    this.openIme("path", this.currentPath, null, "输入路径");
+  },
+
+  openIme(mode, value, target, title) {
+    this.imeMode = mode || "";
+    this.imeInput = String(value == null ? "" : value);
+    this.imeTarget = target || null;
+    this.imeTitle = title || "输入";
+    this.showIme = true;
+  },
+
+  closeIme() {
+    this.showIme = false;
+    this.imeMode = "";
+    this.imeTitle = "";
+    this.imeInput = "";
+    this.imeTarget = null;
+  },
+
+  onImePress(e) {
+    const detail = e && e.detail ? e.detail : {};
+    const text = String(detail.textbox == null ? "" : detail.textbox);
+    this.imeInput = text;
+    if (detail.status !== 1) return;
+
+    const mode = this.imeMode;
+    const target = this.imeTarget;
+    const trimmed = text.trim();
+    this.closeIme();
+    if (!trimmed) return;
+
+    if (mode === "path") {
+      this.refreshList(trimmed);
+    } else if (mode === "rename" && target) {
+      this.doRename(target, trimmed);
+    }
+  },
+
+  async refreshList(path) {
+    if (this.isBusy) return;
+    this.isBusy = true;
+    const nextPath = normalizePath(path || this.currentPath);
+    try {
+      const res = await suIpc.exec(`ls -l ${shellEscape(nextPath)}`, { sync: true, timeoutMs: 4000 });
+      const output = res && res.output != null ? String(res.output) : "";
+      let list = parseLsOutput(output, nextPath);
+
+      if (!list.length) {
+        const res2 = await suIpc.exec(`ls ${shellEscape(nextPath)}`, { sync: true, timeoutMs: 3500 });
+        const output2 = res2 && res2.output != null ? String(res2.output) : "";
+        list = parseLsOutput(output2, nextPath);
+      }
+
+      this.fileList = list;
+      this.currentPath = nextPath;
+    } catch (e) {
+      prompt.showToast({
+        message: `读取失败：${e && e.message ? e.message : "unknown"}`,
+        duration: 900,
+      });
+    } finally {
+      this.isBusy = false;
+    }
+  },
+
+  async runShell(cmd, okMessage) {
+    if (this.isBusy) return false;
+    this.isBusy = true;
+    try {
+      await suIpc.exec(cmd, { sync: true, timeoutMs: 6000 });
+      if (okMessage) {
+        prompt.showToast({ message: okMessage, duration: 700 });
+      }
+      return true;
+    } catch (e) {
+      prompt.showToast({
+        message: e && e.message ? e.message : "执行失败",
+        duration: 900,
+      });
+      return false;
+    } finally {
+      this.isBusy = false;
+    }
+  },
+
+  showEntryDetail(entry) {
+    if (!entry) return;
+    const info = entry.info && entry.info !== "—" ? entry.info : "";
+    const msg = info
+      ? `${entry.title}\n${info}\n${entry.fullPath}`
+      : `${entry.title}\n${entry.fullPath}`;
+    prompt.showToast({ message: msg, duration: 1100 });
+  },
+
+  doRename(entry, nextName) {
+    const name = String(nextName == null ? "" : nextName).trim();
+    if (!entry || !name) return;
+    if (name === entry.title) return;
+    const destPath = joinPath(this.currentPath, name);
+    const cmd = `mv ${shellEscape(entry.fullPath)} ${shellEscape(destPath)}`;
+    this.runShell(cmd, `已重命名为：${name}`).then((ok) => {
+      if (ok) this.refreshList(this.currentPath);
     });
   },
 
   // 打开菜单：带弹入动画
   onLongPress(evt) {
-    this.menuTarget = evt.detail.title;
+    const hit = findEntry(this.fileList, evt.detail.index, evt.detail.title);
+    if (!hit) return;
+    this.menuTargetEntry = hit;
+    this.menuTarget = hit.title;
     this.showMenu = true;
 
     this.menuAnim = "";
@@ -261,46 +476,68 @@ export default {
     this.menuAnim = "modal-leave";
     setTimeout(() => {
       this.showMenu = false;
+      this.menuTarget = null;
+      this.menuTargetEntry = null;
     }, 180);
   },
 
   copyTarget() {
-    if (this.menuTarget) {
-      prompt.showToast({
-        message: "复制：" + this.menuTarget,
-      });
+    const entry = this.menuTargetEntry;
+    if (entry) {
+      this.clipboard = entry;
+      this.clipboardMode = "copy";
+      prompt.showToast({ message: `已复制：${entry.title}`, duration: 700 });
     }
     this.closeMenu();
   },
 
   pasteTarget() {
-    prompt.showToast({
-      message: "粘贴到当前目录",
+    const entry = this.clipboard;
+    if (!entry || !entry.fullPath) {
+      prompt.showToast({ message: "剪贴板为空", duration: 650 });
+      this.closeMenu();
+      return;
+    }
+    const dest = joinPath(this.currentPath, entry.title);
+    if (dest === entry.fullPath) {
+      prompt.showToast({ message: "已在当前目录", duration: 650 });
+      this.closeMenu();
+      return;
+    }
+    const cmd = this.clipboardMode === "cut"
+      ? `mv ${shellEscape(entry.fullPath)} ${shellEscape(dest)}`
+      : `cp -r ${shellEscape(entry.fullPath)} ${shellEscape(dest)}`;
+    this.runShell(cmd, "粘贴完成").then((ok) => {
+      if (ok && this.clipboardMode === "cut") {
+        this.clipboard = null;
+        this.clipboardMode = "";
+      }
+      if (ok) this.refreshList(this.currentPath);
     });
     this.closeMenu();
   },
 
   cutTarget() {
-    if (this.menuTarget) {
-      prompt.showToast({
-        message: "剪切：" + this.menuTarget,
-      });
+    const entry = this.menuTargetEntry;
+    if (entry) {
+      this.clipboard = entry;
+      this.clipboardMode = "cut";
+      prompt.showToast({ message: `已剪切：${entry.title}`, duration: 700 });
     }
     this.closeMenu();
   },
 
   renameTarget() {
-    if (this.menuTarget) {
-      prompt.showToast({
-        message: "重命名：" + this.menuTarget,
-      });
+    const entry = this.menuTargetEntry;
+    if (entry) {
+      this.openIme("rename", entry.title, entry, "重命名");
     }
     this.closeMenu();
   },
 
   // 打开删除确认弹窗：带弹入动画
   deleteTarget() {
-    if (!this.menuTarget) return;
+    if (!this.menuTargetEntry) return;
 
     this.showConfirm = true;
     this.confirmAnim = "";
@@ -311,16 +548,18 @@ export default {
 
   // 确认删除：弹出动画后隐藏
   confirmDelete() {
-    if (this.menuTarget) {
-      prompt.showToast({
-        message: "已删除：" + this.menuTarget,
-      });
-    }
+    const entry = this.menuTargetEntry;
+    if (!entry) return;
+    const cmd = `rm -rf ${shellEscape(entry.fullPath)}`;
+    this.runShell(cmd, `已删除：${entry.title}`).then((ok) => {
+      if (ok) this.refreshList(this.currentPath);
+    });
 
     this.confirmAnim = "modal-leave";
     setTimeout(() => {
       this.showConfirm = false;
     }, 180);
+    this.closeMenu();
   },
 
   // 取消删除：弹出动画后隐藏
@@ -329,13 +568,13 @@ export default {
     setTimeout(() => {
       this.showConfirm = false;
     }, 180);
+    this.closeMenu();
   },
 
   detailTarget() {
-    if (this.menuTarget) {
-      prompt.showToast({
-        message: "查看详细：" + this.menuTarget,
-      });
+    const entry = this.menuTargetEntry;
+    if (entry) {
+      this.showEntryDetail(entry);
     }
     this.closeMenu();
   },
@@ -354,6 +593,7 @@ export default {
   flex-direction: column;
   justify-content: flex-start;
   align-items: center;
+  position: relative;
 }
 
 /* 页面动画基类：scroll + sticky-wrapper 用 */
@@ -661,5 +901,49 @@ export default {
 
 .confirm-btn.cancel {
   background-color: #2a2a2a;
+}
+
+/* —— 输入法 —— */
+.ime-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.88);
+  z-index: 999;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.ime-header {
+  width: 100%;
+  height: 40px;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+
+.ime-title {
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ime-close {
+  position: absolute;
+  right: 16px;
+  top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #1a1a1a;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.ime-close-text {
+  color: #cccccc;
+  font-size: 14px;
 }
 </style>

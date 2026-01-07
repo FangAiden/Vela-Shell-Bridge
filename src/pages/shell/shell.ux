@@ -1,15 +1,35 @@
 <import name="time-bar" src="../../components/timeBar"></import>
+<import name="ime" src="../../components/VelaIME.ux"></import>
 
 <template>
 	<div class="root">
 		<time-bar />
 		<!-- 正方形安全区包裹终端内容 -->
 		<div class="square-wrapper {{ animClass }}">
-			<scroll class="box" scroll-y="true" bounces="true">
-				<div class="shell-content" for="{{ textList }}">
-					<text class="shell-text">{{ $item }}</text>
+			<div class="terminal">
+				<scroll class="output" scroll-y="true" bounces="true">
+					<div class="shell-line" for="{{ textList }}">
+						<text class="shell-text">{{ $item }}</text>
+					</div>
+				</scroll>
+				<div class="input-bar" onclick="openIme">
+					<text class="prompt">></text>
+					<text class="input-preview lines-1">{{ inputPreview }}</text>
+					<div class="input-btn {{ isRunning ? 'input-btn-busy' : '' }}" onclick="openIme">
+						<text class="input-btn-text">{{ isRunning ? '运行中' : '输入' }}</text>
+					</div>
 				</div>
-			</scroll>
+			</div>
+		</div>
+
+		<div class="ime-layer" if="{{ showIme }}">
+			<div class="ime-header">
+				<text class="ime-title">输入命令</text>
+				<div class="ime-close" onclick="closeIme">
+					<text class="ime-close-text">取消</text>
+				</div>
+			</div>
+			<ime hide="{{ false }}" inputbox="{{ imeInput }}" @press="onImePress"></ime>
 		</div>
 	</div>
 </template>
@@ -17,21 +37,26 @@
 <script>
 import prompt from "@system.prompt";
 import router from "@system.router";
+import suIpc from "../su-ipc.js";
 import { getCachedTransitionsEnabled, getLocalSettings } from "../app-settings.js";
+
+function oneLine(s) {
+	try {
+		return String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+	} catch (_) {
+		return "";
+	}
+}
 
 export default {
 	data: {
-		textList: [
-			"> ls",
-			"/data :",
-			"  quickapp/",
-			"  logs/",
-			"  a.txt",
-			"  b.txt",
-			"  c.txt",
-			"  d.txt",
-			"  e.txt",
-		],
+		textList: [],
+		inputBuffer: "",
+		inputPreview: "点击输入命令",
+		showIme: false,
+		imeInput: "",
+		isRunning: false,
+
 		// 动画状态
 		transitionsEnabled: true,
 		animClass: "", // 控制页面入场动画的 class
@@ -53,6 +78,10 @@ export default {
 		});
 	},
 	onBackPress() {
+		if (this.showIme) {
+			this.closeIme();
+			return true;
+		}
 		if (!this.transitionsEnabled) {
 			router.back();
 			return true;
@@ -74,6 +103,75 @@ export default {
 		// 返回 true：拦截系统默认返回行为
 		return true;
 	},
+
+	openIme() {
+		if (this.isRunning) {
+			prompt.showToast({ message: "命令执行中，请稍后", duration: 700 });
+			return;
+		}
+		this.imeInput = this.inputBuffer || "";
+		this.showIme = true;
+	},
+
+	closeIme() {
+		this.showIme = false;
+		this.imeInput = "";
+	},
+
+	onImePress(e) {
+		const detail = e && e.detail ? e.detail : {};
+		const text = String(detail.textbox == null ? "" : detail.textbox);
+		this.imeInput = text;
+		if (detail.status !== 1) return;
+
+		this.showIme = false;
+		const cmd = text.trim();
+		if (!cmd) return;
+
+		this.inputBuffer = text;
+		this.inputPreview = oneLine(cmd) || "点击输入命令";
+		this.runCommand(cmd);
+	},
+
+	appendLine(line) {
+		const next = Array.isArray(this.textList) ? this.textList.slice() : [];
+		next.push(String(line == null ? "" : line));
+		if (next.length > 140) {
+			next.splice(0, next.length - 140);
+		}
+		this.textList = next;
+	},
+
+	appendOutput(output) {
+		const lines = String(output == null ? "" : output)
+			.split(/\r?\n/)
+			.filter((x) => x !== "");
+		if (!lines.length) {
+			this.appendLine("(无输出)");
+			return;
+		}
+		lines.forEach((line) => this.appendLine(line));
+	},
+
+	async runCommand(cmd) {
+		if (this.isRunning) return;
+		this.isRunning = true;
+		this.appendLine(`> ${cmd}`);
+		try {
+			const res = await suIpc.exec(cmd, { sync: true, timeoutMs: 8000 });
+			const out = res && res.output != null ? res.output : "";
+			this.appendOutput(out);
+			if (res && res.exitCode != null) {
+				this.appendLine(`[exit ${res.exitCode}]`);
+			}
+		} catch (e) {
+			const msg = e && e.message ? e.message : "执行失败";
+			this.appendLine(`ERR: ${msg}`);
+			prompt.showToast({ message: msg, duration: 900 });
+		} finally {
+			this.isRunning = false;
+		}
+	},
 };
 </script>
 
@@ -86,6 +184,7 @@ export default {
 	justify-content: flex-start;
 	align-items: stretch;
 	background-color: #000000;
+	position: relative;
 }
 
 /* 正方形安全区：占据 time-bar 下面的空间，并把内部内容居中成一个正方形 */
@@ -106,36 +205,135 @@ export default {
 }
 
 /* 终端区域：在 square-wrapper 中形成“最大内切正方形” */
-.box {
-	/* 边长约为屏幕宽度的 70% ≈ 1/√2，对应圆的最大内切正方形 */
+.terminal {
 	width: 70%;
 	height: 70%;
+	flex-direction: column;
+	justify-content: space-between;
+	align-items: stretch;
+	border-radius: 14px;
+	background-color: #0b0b0b;
+	padding: 8px;
+}
 
+.output {
+	flex: 1;
+	width: 100%;
 	flex-direction: column;
 	justify-content: flex-start;
 	align-items: flex-start;
-
-	/* 内部留一点边距，让文字不要贴边 */
-	padding: 6px;
 }
 
 /* 每一行终端输出 */
-.shell-content {
+.shell-line {
 	flex-direction: row;
 	align-items: center;
 	width: 100%;
-	min-height: 20px;
+	min-height: 18px;
 	margin-bottom: 4px;
 }
 
 /* 终端风格文字：左对齐、绿色 */
 .shell-text {
 	color: #7cff7c;
-	font-size: 14px;
+	font-size: 15px;
 	text-align: left;
 	/* 如果环境支持，可以再加这行：
 	   font-family: monospace;
 	*/
+}
+
+.input-bar {
+	height: 40px;
+	margin-top: 6px;
+	padding: 0 8px;
+	border-radius: 12px;
+	background-color: #121212;
+	border-width: 1px;
+	border-color: #2a2a2a;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-start;
+}
+
+.prompt {
+	color: #7cff7c;
+	font-size: 16px;
+	font-weight: 700;
+	margin-right: 6px;
+}
+
+.input-preview {
+	flex: 1;
+	color: #cfcfcf;
+	font-size: 13px;
+}
+
+.input-btn {
+	padding: 6px 10px;
+	border-radius: 10px;
+	background-color: #1f3323;
+	border-width: 1px;
+	border-color: #2d5a3a;
+}
+
+.input-btn-busy {
+	opacity: 0.6;
+}
+
+.input-btn-text {
+	color: #a7f3c3;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.lines-1 {
+	lines: 1;
+	text-overflow: ellipsis;
+}
+
+/* —— 输入法 —— */
+.ime-layer {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.88);
+	z-index: 999;
+	flex-direction: column;
+	justify-content: flex-start;
+	align-items: center;
+}
+
+.ime-header {
+	width: 100%;
+	height: 40px;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+}
+
+.ime-title {
+	color: #f2f2f2;
+	font-size: 16px;
+	font-weight: 700;
+}
+
+.ime-close {
+	position: absolute;
+	right: 16px;
+	top: 6px;
+	padding: 6px 10px;
+	border-radius: 12px;
+	background-color: #1a1a1a;
+	border-width: 1px;
+	border-color: #2a2a2a;
+}
+
+.ime-close-text {
+	color: #cccccc;
+	font-size: 14px;
 }
 
 /* ====== 入场动画相关样式 ====== */
