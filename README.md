@@ -431,7 +431,9 @@ sequenceDiagram
 
   App->>Client: exec("cd /data/quickapp")
   Note over App,Client: 后续调用 exec("ls") 时会在该 cwd 下执行
-  Client->>Files: Write ipc_request_{id}.json<br/>{ type: "exec", cmd: "exec", args: { shell, sync } }
+  Client->>Files: Write ipc_slot_{slot}.req.json<br/>{ type: "exec", cmd: "exec", args: { shell, sync } }
+  Client->>Files: Write ipc_slot_{slot}.ready<br/>{ id }
+  Client->>Files: Write ipc_pending<br/>{ token++ }
   Files->>Lua: scanned by timer
   Lua->>Router: route_request(ctx, app_id, req)
   Router->>ExecUC: handle(app_id, req, ctx)
@@ -467,7 +469,9 @@ sequenceDiagram
     IC-->>Phone: onmessage(reply)
   else ok
     Bridge->>SU: suIpc.exec(cmd)
-    SU->>Files: Write ipc_request_{id}.json (type=exec)
+    SU->>Files: Write ipc_slot_{slot}.req.json (type=exec)
+    SU->>Files: Write ipc_slot_{slot}.ready (id)
+    SU->>Files: Write ipc_pending (token++)
     Files->>Lua: scanned by timer
     Lua->>ExecUC: handle exec
     ExecUC-->>Lua: response { exit_code, output, cwd }
@@ -495,7 +499,9 @@ sequenceDiagram
     Phone->>IC: send RPC<br/>{ method:"fs.read", params:{path,offset,length,encoding:"base64"} }
     IC->>Bridge: onmessage(data)
     Bridge->>SU: suIpc.management("fs_read", args)
-    SU->>Files: Write ipc_request_{id}.json (type=management)
+    SU->>Files: Write ipc_slot_{slot}.req.json (type=management)
+    SU->>Files: Write ipc_slot_{slot}.ready (id)
+    SU->>Files: Write ipc_pending (token++)
     Files->>Lua: scanned by timer
     Lua->>MgmtUC: handle fs_read / fs_write / fs_stat ...
     MgmtUC->>FS: read/write bytes
@@ -538,16 +544,22 @@ subgraph Watch["Watch（VelaOS）"]
   end
 
   subgraph AdminFiles["Admin sandbox files<br/>/data/files/com.super.su.aigik/"]
-    AdminReq["ipc_request_{id}.json"]
+    AdminPending["ipc_pending"]
+    AdminSlotReq["ipc_slot_{i}.req.json"]
+    AdminSlotReady["ipc_slot_{i}.ready"]
     AdminRes["ipc_response_{id}.json"]
   end
 
   subgraph AuthorizedApps["Authorized QuickApps（被授权）"]
     direction TB
     PublicJS["tools/su-shell.js（单文件客户端）"]
-    PublicReq["/data/files/{AppId}/ipc_request_{id}.json"]
+    PublicPending["/data/files/{AppId}/ipc_pending"]
+    PublicSlotReq["/data/files/{AppId}/ipc_slot_{i}.req.json"]
+    PublicSlotReady["/data/files/{AppId}/ipc_slot_{i}.ready"]
     PublicRes["/data/files/{AppId}/ipc_response_{id}.json"]
-    PublicJS --> PublicReq
+    PublicJS --> PublicPending
+    PublicJS --> PublicSlotReq
+    PublicJS --> PublicSlotReady
     PublicRes --> PublicJS
   end
 
@@ -571,7 +583,7 @@ subgraph Watch["Watch（VelaOS）"]
     Allow["data/allowlist.json"]
     SettingsJson["data/settings.json"]
     Logs["data/requests_log.json"]
-    ExecLogs["data/exec_logs.json"]
+    ExecLogs["data/exec_logs.ndjson<br/>(+ .bak)"]
   end
 
   subgraph Jobs["Job tmp files"]
@@ -581,13 +593,19 @@ end
 
 PhoneConn <--> Bridge
 
-SuClient --> AdminReq
+SuClient --> AdminPending
+SuClient --> AdminSlotReq
+SuClient --> AdminSlotReady
 AdminRes --> SuClient
 
-PublicReq --> IPC
+PublicPending --> IPC
+PublicSlotReq --> IPC
+PublicSlotReady --> IPC
 IPC --> PublicRes
 
-AdminReq --> IPC
+AdminPending --> IPC
+AdminSlotReq --> IPC
+AdminSlotReady --> IPC
 IPC --> AdminRes
 
 Allowlist -- scan list --> IPC

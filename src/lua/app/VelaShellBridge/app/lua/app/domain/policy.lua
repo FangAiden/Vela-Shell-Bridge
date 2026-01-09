@@ -8,6 +8,9 @@ local DATA_FILE = config.DATA_DIR .. "/policies.json"
 
 M.data  = {}
 M.dirty = false
+-- Ephemeral runtime policies (not persisted).
+-- Used to avoid I/O amplification for allow_once / allow_until_reboot.
+M.session = {}
 
 local function load_from_disk()
     local txt = fs.read_file(DATA_FILE)
@@ -36,7 +39,7 @@ local function default_policy()
 end
 
 local function normalize_policy(p)
-    if p == "allow" or p == "deny" or p == "ask" or p == "allow_once" then
+    if p == "allow" or p == "deny" or p == "ask" or p == "allow_once" or p == "allow_until_reboot" then
         return p
     end
     return nil
@@ -54,6 +57,11 @@ end
 function M.get_policy(app_id)
     if type(app_id) ~= "string" or app_id == "" then
         return default_policy()
+    end
+
+    local sp = normalize_policy(M.session[app_id])
+    if sp then
+        return sp
     end
 
     local info = M.data[app_id]
@@ -79,6 +87,12 @@ function M.set_policy(app_id, policy)
         return false, "invalid policy"
     end
 
+    -- Session-level policies: do not persist.
+    if p == "allow_once" or p == "allow_until_reboot" then
+        M.session[app_id] = p
+        return true
+    end
+
     local info = M.data[app_id]
     if not info or type(info) ~= "table" then
         info = {}
@@ -87,6 +101,7 @@ function M.set_policy(app_id, policy)
 
     info.policy = p
     M.dirty = true
+    M.session[app_id] = nil
 
     return true
 end
@@ -98,8 +113,12 @@ function M.check_exec_allowed(app_id)
         return true, "ALLOW"
     elseif p == "deny" then
         return false, "DENY"
+    elseif p == "allow_until_reboot" then
+        return true, "ALLOW_SESSION"
     elseif p == "allow_once" then
-        M.set_policy(app_id, "ask")
+        -- Consume once without touching disk. If persisted policy is allow_once,
+        -- override it in-session to prevent repeated allows.
+        M.session[app_id] = "ask"
         return true, "ALLOW_ONCE"
     else
         return false, "ASK"

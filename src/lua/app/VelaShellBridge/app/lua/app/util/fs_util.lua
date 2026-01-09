@@ -56,6 +56,22 @@ function M.write_file(path, data)
     return true
 end
 
+-- Append mode (non-atomic): used for low-overhead logs (NDJSON).
+function M.append_file(path, data)
+    if data == nil then data = "" end
+
+    local dir = path:match("^(.*)/[^/]+$")
+    if dir and dir ~= "" then
+        os.execute(string.format('mkdir -p %s', dir))
+    end
+
+    local f = io.open(path, "a")
+    if not f then return false, "open failed" end
+    f:write(data)
+    f:close()
+    return true
+end
+
 function M.remove_file(path)
     os.remove(path)
     return true
