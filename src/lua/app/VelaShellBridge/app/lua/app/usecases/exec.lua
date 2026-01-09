@@ -18,6 +18,30 @@ local function trim(s)
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+local function strip_quotes(s)
+    local t = trim(s)
+    if #t >= 2 then
+        local a = t:sub(1, 1)
+        local b = t:sub(-1)
+        if (a == '"' and b == '"') or (a == "'" and b == "'") then
+            return t:sub(2, -2)
+        end
+    end
+    return t
+end
+
+local function parse_cd_cmd(shell_cmd)
+    local s = trim(shell_cmd)
+    if s == "cd" then
+        return true, ""
+    end
+    local rest = s:match("^cd%s+(.+)$")
+    if rest then
+        return true, strip_quotes(rest)
+    end
+    return false, nil
+end
+
 local function first_token(cmd)
     if type(cmd) ~= "string" then return "" end
     return cmd:match("^%s*(%S+)") or ""
@@ -125,7 +149,7 @@ function M.handle(app_id, req, ctx)
             record_denied(app_id, "poll " .. tostring(job_id), resp)
             return resp
         end
-        local r = execmod.poll_job(job_id)
+        local r = execmod.poll_job(job_id, app_id)
         r.id = req.id
         if should_save_history() and r and r.state == "done" and logmod.update_exec_job then
             pcall(logmod.update_exec_job, job_id, r)
@@ -164,6 +188,37 @@ function M.handle(app_id, req, ctx)
             record_denied(app_id, shell_cmd, resp)
             return resp
         end
+    end
+
+    local is_cd, cd_arg = parse_cd_cmd(shell_cmd)
+    if is_cd then
+        local ok_cd, cwd_or_err = execmod.cd(app_id, cd_arg)
+        if not ok_cd then
+            local resp = responses.error(req.id, "BAD_REQUEST", tostring(cwd_or_err or "cd failed"))
+            if should_save_history() and logmod.record_exec_start then
+                pcall(logmod.record_exec_start, app_id, shell_cmd, resp)
+            end
+            return resp
+        end
+
+        local r = {
+            ok     = true,
+            async  = false,
+            job_id = "",
+            state  = "done",
+            result = {
+                exit_code = 0,
+                status    = "exit",
+                success   = true,
+                output    = "",
+                cwd       = cwd_or_err,
+            }
+        }
+        r.id = req.id
+        if should_save_history() and logmod.record_exec_start then
+            pcall(logmod.record_exec_start, app_id, shell_cmd, r)
+        end
+        return r
     end
 
     local r = execmod.start_job(shell_cmd, is_sync, app_id)

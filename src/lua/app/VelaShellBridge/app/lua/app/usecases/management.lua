@@ -6,9 +6,107 @@ local logmod = require("app.domain.log")
 local allowlist = require("app.domain.allowlist")
 local appscan = require("app.domain.app_scan")
 local settings = require("app.domain.settings")
+local execmod = require("app.domain.exec")
 local responses = require("app.core.ipc_responses")
 
 local M = {}
+
+local b64 = require("app.util.base64_util")
+local fs = require("app.util.fs_util")
+
+local function trim(s)
+    if type(s) ~= "string" then
+        return ""
+    end
+    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function sh_quote(s)
+    s = tostring(s or "")
+    s = s:gsub('"', '\\"')
+    return '"' .. s .. '"'
+end
+
+local function ensure_parent_dir(path)
+    if type(path) ~= "string" then
+        return
+    end
+    local dir = path:match("^(.*)/[^/]+$")
+    if not dir or dir == "" then
+        return
+    end
+    os.execute("mkdir -p " .. sh_quote(dir))
+end
+
+local function file_size(path)
+    local f = io.open(path, "rb")
+    if not f then
+        return nil
+    end
+    local sz = f:seek("end")
+    f:close()
+    if type(sz) ~= "number" then
+        return nil
+    end
+    return sz
+end
+
+local function read_file_chunk(path, offset, length)
+    local f, err = io.open(path, "rb")
+    if not f then
+        return nil, "open failed: " .. tostring(err)
+    end
+
+    local sz = f:seek("end")
+    if type(sz) == "number" then
+        if type(offset) ~= "number" or offset < 0 then
+            offset = 0
+        end
+        if offset > sz then
+            offset = sz
+        end
+        f:seek("set", offset)
+    else
+        sz = nil
+        if type(offset) == "number" and offset > 0 then
+            pcall(function()
+                f:seek("set", offset)
+            end)
+        end
+    end
+
+    local data = f:read(length) or ""
+    f:close()
+
+    local next_offset = (type(offset) == "number" and offset or 0) + #data
+    local eof = false
+    if type(sz) == "number" then
+        eof = next_offset >= sz
+    else
+        eof = (#data < length)
+    end
+
+    return {
+        size = (type(sz) == "number") and sz or -1,
+        offset = (type(offset) == "number") and offset or 0,
+        next_offset = next_offset,
+        eof = eof,
+        raw_len = #data,
+        data = data,
+    }
+end
+
+local function write_file_bytes(path, bytes, mode)
+    ensure_parent_dir(path)
+    local open_mode = (mode == "truncate") and "wb" or "ab"
+    local f, err = io.open(path, open_mode)
+    if not f then
+        return false, "open failed: " .. tostring(err)
+    end
+    f:write(bytes)
+    f:close()
+    return true, #bytes
+end
 
 local function list_allowlist()
     local m = allowlist.get_all() or {}
@@ -73,6 +171,100 @@ function M.handle(app_id, req, ctx)
             admin_app_id = ctx.ADMIN_APP_ID,
             apps_json = ctx.APPS_JSON,
             app_install_base = ctx.APP_INSTALL_BASE,
+        })
+
+    elseif cmd == "shell_get_cwd" then
+        return responses.ok(req.id, { cwd = execmod.get_cwd(app_id) })
+
+    elseif cmd == "shell_set_cwd" then
+        local cwd = trim(args.cwd)
+        local ok, cwd_or_err = execmod.cd(app_id, cwd)
+        if not ok then
+            return responses.error(req.id, "BAD_REQUEST", tostring(cwd_or_err or "invalid cwd"))
+        end
+        return responses.ok(req.id, { cwd = cwd_or_err })
+
+    elseif cmd == "fs_stat" then
+        local path = trim(args.path)
+        if path == "" then
+            return responses.error(req.id, "BAD_REQUEST", "path required")
+        end
+        local is_dir = (fs.is_dir and fs.is_dir(path)) or false
+        local exists = is_dir or (fs.file_exists and fs.file_exists(path)) or false
+        local sz = -1
+        if exists and not is_dir then
+            sz = file_size(path) or -1
+        end
+        return responses.ok(req.id, {
+            path = path,
+            exists = exists,
+            is_dir = is_dir,
+            size = sz,
+        })
+
+    elseif cmd == "fs_read" then
+        local path = trim(args.path)
+        if path == "" then
+            return responses.error(req.id, "BAD_REQUEST", "path required")
+        end
+        local offset = tonumber(args.offset) or 0
+        local length = tonumber(args.length) or 2048
+        if length < 1 then length = 1 end
+        if length > 32768 then length = 32768 end
+        local encoding = trim(args.encoding)
+        if encoding == "" then
+            encoding = "base64"
+        end
+        if encoding ~= "base64" then
+            return responses.error(req.id, "BAD_REQUEST", "encoding must be base64")
+        end
+
+        local chunk, err = read_file_chunk(path, offset, length)
+        if not chunk then
+            return responses.error(req.id, "BAD_REQUEST", tostring(err or "read failed"))
+        end
+
+        local out = {
+            path = path,
+            encoding = "base64",
+            offset = chunk.offset,
+            next_offset = chunk.next_offset,
+            eof = chunk.eof,
+            size = chunk.size,
+            data = b64.encode(chunk.data or ""),
+        }
+        return responses.ok(req.id, out)
+
+    elseif cmd == "fs_write" then
+        local path = trim(args.path)
+        if path == "" then
+            return responses.error(req.id, "BAD_REQUEST", "path required")
+        end
+        local data_b64 = args.data
+        if type(data_b64) ~= "string" or data_b64 == "" then
+            return responses.error(req.id, "BAD_REQUEST", "data required")
+        end
+        local mode = trim(args.mode)
+        if mode ~= "truncate" and mode ~= "append" then
+            mode = "append"
+        end
+        local encoding = trim(args.encoding)
+        if encoding == "" then
+            encoding = "base64"
+        end
+        if encoding ~= "base64" then
+            return responses.error(req.id, "BAD_REQUEST", "encoding must be base64")
+        end
+
+        local bytes = b64.decode(data_b64)
+        local ok, n_or_err = write_file_bytes(path, bytes, mode)
+        if not ok then
+            return responses.error(req.id, "BAD_REQUEST", tostring(n_or_err or "write failed"))
+        end
+        return responses.ok(req.id, {
+            path = path,
+            bytes = n_or_err,
+            mode = mode,
         })
 
     elseif cmd == "set_settings" then

@@ -87,6 +87,36 @@
         </div>
 
         <div class="section">
+          <text class="section-title">手机互联</text>
+
+          <div class="card" onclick="onToggleRemote">
+            <div class="card-texts">
+              <text class="card-title lines-1">Interconnect 远程控制</text>
+              <text class="card-sub lines-2">{{ remoteSummary }}</text>
+            </div>
+            <div class="switch {{ remoteEnabled ? 'switch-on' : 'switch-off' }}">
+              <div class="switch-knob"></div>
+            </div>
+          </div>
+
+          <div class="card" onclick="regenRemoteToken" if="{{ remoteEnabled }}">
+            <div class="card-texts">
+              <text class="card-title lines-1">配对码</text>
+              <text class="card-sub lines-2">{{ remoteToken || '点击生成/刷新' }}</text>
+            </div>
+            <image class="arrow" src="/resources/image/right_arrow.png"></image>
+          </div>
+
+          <div class="card" onclick="refreshRemoteStatus">
+            <div class="card-texts">
+              <text class="card-title lines-1">连接状态</text>
+              <text class="card-sub lines-2">{{ remoteStatusText }}</text>
+            </div>
+            <image class="arrow" src="/resources/image/right_arrow.png"></image>
+          </div>
+        </div>
+
+        <div class="section">
           <text class="section-title">输入法</text>
 
           <div class="card" onclick="toggleImeKeyboard">

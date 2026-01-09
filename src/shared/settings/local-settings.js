@@ -17,6 +17,10 @@ const DEFAULTS = {
   ui: {
     enableTransitions: true,
   },
+  remote: {
+    enabled: false,
+    token: "",
+  },
   ipc: {
     jsPollIntervalMs: 200,
   },
@@ -59,6 +63,11 @@ function normalize(raw) {
     if (typeof raw.ui.enableTransitions === "boolean") {
       out.ui.enableTransitions = raw.ui.enableTransitions;
     }
+  }
+
+  if (raw.remote && typeof raw.remote === "object") {
+    if (typeof raw.remote.enabled === "boolean") out.remote.enabled = raw.remote.enabled;
+    if (typeof raw.remote.token === "string") out.remote.token = raw.remote.token.trim().slice(0, 32);
   }
 
   if (raw.ipc && typeof raw.ipc === "object") {
@@ -209,6 +218,11 @@ function applyPatch(current, patch) {
     }
   }
 
+  if (patch.remote && typeof patch.remote === "object") {
+    if (typeof patch.remote.enabled === "boolean") next.remote.enabled = patch.remote.enabled;
+    if (typeof patch.remote.token === "string") next.remote.token = patch.remote.token.trim().slice(0, 32);
+  }
+
   if (patch.ipc && typeof patch.ipc === "object") {
     if (patch.ipc.jsPollIntervalMs != null) {
       next.ipc.jsPollIntervalMs = clampInt(patch.ipc.jsPollIntervalMs, 50, 2000, next.ipc.jsPollIntervalMs);
@@ -265,6 +279,14 @@ export async function setUiTransitionsEnabled(enabled) {
 
 export async function setJsPollIntervalMs(ms) {
   return updateLocalSettings({ ipc: { jsPollIntervalMs: ms } });
+}
+
+export async function setRemoteEnabled(enabled) {
+  return updateLocalSettings({ remote: { enabled: !!enabled } });
+}
+
+export async function setRemoteToken(token) {
+  return updateLocalSettings({ remote: { token: String(token == null ? "" : token) } });
 }
 
 export function getLocalDefaults() {
