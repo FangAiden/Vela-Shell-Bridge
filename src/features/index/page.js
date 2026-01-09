@@ -117,7 +117,10 @@ export default createPage({
   },
 
   onClickCard(id) {
+    if (this.isLeaving) return;
+
     if (!this.transitionsEnabled) {
+      this.isLeaving = true;
       let target = "";
       switch (id) {
         case "perm":
@@ -129,13 +132,13 @@ export default createPage({
           target = "pages/" + id;
           break;
         default:
+          this.isLeaving = false;
           return;
       }
-      router.push({ uri: target });
+      router.replace({ uri: target, params: {} });
       return;
     }
 
-    if (this.isLeaving) return;
     this.isLeaving = true;
     this.animClass = "page-leave";
 
@@ -156,7 +159,7 @@ export default createPage({
     }
 
     setTimeout(() => {
-      router.push({ uri: target });
+      router.replace({ uri: target, params: {} });
     }, 180);
   },
 
@@ -175,4 +178,4 @@ export default createPage({
       console.log("SU ERR:", e.message);
     }
   },
-});
+}, { isHome: true });

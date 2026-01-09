@@ -25,14 +25,16 @@ export default {
 	onDestroy() {
 		if (this._minuteTimer) {
 			clearTimeout(this._minuteTimer);
+			this._minuteTimer = null;
 		}
 
 		this.$off('page-on-show', this.handleParentShow);
 	},
 
 	onClickTimeBar() {
-		router.push({
+		router.replace({
 			uri: "pages/test",
+			params: {},
 		});
 	},
 
@@ -45,6 +47,11 @@ export default {
 
 	// 对齐到“真实世界”的分钟刻度：每次都根据当前系统时间重新计算下一次触发时间
 	scheduleNextTick() {
+		if (this._minuteTimer) {
+			clearTimeout(this._minuteTimer);
+			this._minuteTimer = null;
+		}
+
 		const now = new Date();
 
 		// 当前这一分钟已经过去的毫秒
