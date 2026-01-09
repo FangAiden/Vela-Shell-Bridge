@@ -1,306 +1,70 @@
-local lvgl = require("lvgl")
-local JSON = require("app.core.json")
+-- app/app.lua
+-- Bridge layer for emulator hot-reload: delegates to the real-device Lua project
+-- under `app/VelaShellBridge/app/lua/app/vela_shell_bridge.lua` while keeping the same external
+-- interface (`M.build()` returns `root`, and the module returns `M`).
 
--------------------------------------------------
--- 2. SU daemon modules
--------------------------------------------------
-local config   = require("app.config")
-local ipc      = require("app.core.ipc")
-local policy   = require("app.domain.policy")
-local logmod   = require("app.domain.log")
-local allowlst = require("app.domain.allowlist")
-local settings = require("app.domain.settings")
-local app_scan = require("app.domain.app_scan")
-
--------------------------------------------------
--- 2.1 全局开关：控制整套 SU 守护逻辑
--------------------------------------------------
-_G.SU_ENABLED = (_G.SU_ENABLED ~= false)  -- 默认开启
-local su_timer = nil                      -- 保存定时器引用（如果以后想暂停/恢复）
-
--------------------------------------------------
--- 3. Log buffer helpers
--------------------------------------------------
-local log_lines = {}
-
--- 全局日志视图引用，由 UI 初始化时赋值
-_G.SU_LOG_VIEW = _G.SU_LOG_VIEW or nil
-
--- 真正干活的日志函数，挂到全局
-function _G.SU_LOG(msg)
-    local ts = os.date("%H:%M:%S")
-    local line = "[" .. ts .. "] " .. tostring(msg)
-
-    log_lines[#log_lines + 1] = line
-    if #log_lines > 100 then
-        table.remove(log_lines, 1)
+local function get_this_dir()
+    local src = ""
+    if debug and debug.getinfo then
+        local info = debug.getinfo(1, "S")
+        src = (info and info.source) or ""
     end
 
-    -- 有 UI 就刷新 UI，没有就至少 print 一下
-    if _G.SU_LOG_VIEW and _G.SU_LOG_VIEW.set then
-        _G.SU_LOG_VIEW:set { text = table.concat(log_lines, "\n") }
+    if type(src) ~= "string" then
+        src = ""
     end
 
-    -- 顺便打到串口，方便看
-    print("[SU]", line)
-end
-
--- UI 内部继续用的包装函数（保持原调用不改太多）
-local function append_log(log_view, msg)
-    -- 把当前 log_view 注册成全局视图（只要传进来，就记住它）
-    if log_view and log_view ~= _G.SU_LOG_VIEW then
-        _G.SU_LOG_VIEW = log_view
-    end
-    _G.SU_LOG(msg)
-end
-
-local function clear_log(log_view)
-    log_lines = {}
-    if log_view or _G.SU_LOG_VIEW then
-        (log_view or _G.SU_LOG_VIEW):set { text = "" }
-    end
-end
-
--------------------------------------------------
--- 4. Init daemon state
--------------------------------------------------
-local function init_daemon_state(log_view)
-    local ok, err = pcall(function()
-        settings.load()
-        policy.load()
-        logmod.load()
-        allowlst.load()
-    end)
-    if not ok then
-        append_log(log_view, "Init daemon state failed: " .. tostring(err))
-    else
-        append_log(log_view, "Daemon state loaded")
-    end
-end
-
--------------------------------------------------
--- 5. Start SU daemon (lvgl.Timer)
---    ★ 这里尊重全局开关 _G.SU_ENABLED
--------------------------------------------------
-local function start_daemon(log_view)
-    init_daemon_state(log_view)
-    append_log(log_view, "SU Daemon starting...")
-
-    local period_ms = tonumber(_G.SU_DAEMON_PERIOD_MS) or 300
-    if period_ms < 50 then period_ms = 50 end
-    if period_ms > 2000 then period_ms = 2000 end
-    local current_period_ms = period_ms
-
-    su_timer = lvgl.Timer {
-        period = period_ms,
-        paused = false,
-        cb = function(self)
-            -- 统一总开关：关闭时，整套 IPC/exec 逻辑不执行
-            if not _G.SU_ENABLED then
-                return
-            end
-
-            -- 支持动态修改 daemon 轮询频率（由 QuickApp 通过 management 写入 settings.json）
-            local desired = tonumber(_G.SU_DAEMON_PERIOD_MS) or current_period_ms
-            if desired < 50 then desired = 50 end
-            if desired > 2000 then desired = 2000 end
-            if desired ~= current_period_ms then
-                current_period_ms = desired
-                if self and self.set then
-                    pcall(function() self:set({ period = desired }) end)
-                end
-                append_log(log_view, "SU Daemon period -> " .. tostring(desired) .. " ms")
-            end
-
-            local ok, err = pcall(function()
-                ipc.run_once()
-            end)
-            if not ok then
-                append_log(log_view, "ipc.run_once error: " .. tostring(err))
-            end
-        end
-    }
-
-    append_log(log_view, "SU Daemon running (" .. period_ms .. " ms)")
-end
-
--------------------------------------------------
--- 6. Build UI: round screen + log box + 3 labels as buttons + time label + Switch
--------------------------------------------------
-local function create_ui()
-    local screen_w = lvgl.HOR_RES()
-    local screen_h = lvgl.VER_RES()
-    local diameter = math.min(screen_w, screen_h)
-
-    -- Slightly smaller than circle safe area
-    local safe_size = diameter - 40
-    if safe_size < 100 then safe_size = diameter end
-
-    local root = lvgl.Object(nil, {
-        w = screen_w,
-        h = screen_h,
-        align = lvgl.ALIGN.CENTER,
-        border_width = 0,
-    })
-    root:clear_flag(lvgl.FLAG.SCROLLABLE)
-    root:add_flag(lvgl.FLAG.EVENT_BUBBLE)
-
-    -------------------------------------------------
-    -- Top time label
-    -------------------------------------------------
-    local time_label = lvgl.Label(root, {
-        text = "--:--:--",
-        align = lvgl.ALIGN.TOP_MID,
-        y = 6,
-    })
-
-    -------------------------------------------------
-    -- 全局开关按钮
-    -------------------------------------------------
-    local btn4 = lvgl.Label(root, {
-        text = _G.SU_ENABLED and "[SU: ON]" or "[SU: OFF]",
-        align = lvgl.ALIGN.TOP_MID,
-        y = 40,
-    })
-    btn4:add_flag(lvgl.FLAG.CLICKABLE)
-
-    -------------------------------------------------
-    -- Center log box
-    -------------------------------------------------
-    local log_w = safe_size - 20
-    local log_h = math.floor(safe_size * 0.55)
-
-    local log_view = lvgl.Textarea(root, {
-        w = log_w,
-        h = log_h,
-        text = "",
-        bg_color = 0x202020,
-        font_size = 16,
-        align = lvgl.ALIGN.CENTER,
-        text_color = "#eeeeee"
-    })
-
-    -------------------------------------------------
-    -- Bottom button bar with 3 labels (as buttons)
-    -------------------------------------------------
-    local btn_bar = lvgl.Object(root, {
-        w = 310,
-        h = 40,
-        align = lvgl.ALIGN.BOTTOM_MID,
-        y = -40,
-    })
-    btn_bar:clear_flag(lvgl.FLAG.SCROLLABLE)
-
-    -- Left button
-    local btn1 = lvgl.Label(btn_bar, {
-        text = "[Scan]",
-        align = lvgl.ALIGN.LEFT_MID,
-        x = 0,
-    })
-    -- Middle button
-    local btn2 = lvgl.Label(btn_bar, {
-        text = "[Policies]",
-        align = lvgl.ALIGN.CENTER,
-        x = 0,
-    })
-    -- Right button
-    local btn3 = lvgl.Label(btn_bar, {
-        text = "[Clear]",
-        align = lvgl.ALIGN.RIGHT_MID,
-        x = 0,
-    })
-
-    local function make_button(label)
-        label:add_flag(lvgl.FLAG.CLICKABLE)
+    if src:sub(1, 1) == "@" then
+        src = src:sub(2)
     end
 
-    make_button(btn1)
-    make_button(btn2)
-    make_button(btn3)
+    src = src:gsub("\\", "/")
+    return src:match("^(.*)/[^/]+$") or "."
+end
 
-    return root, time_label, log_view, btn1, btn2, btn3, btn4
+local function ensure_vsb_lua_path()
+    if not package or type(package.path) ~= "string" then
+        return nil
+    end
+
+    local dir = get_this_dir()
+    local vsb = dir .. "/VelaShellBridge/app/lua"
+    local p1 = vsb .. "/?.lua"
+    local p2 = vsb .. "/?/init.lua"
+
+    if not package.path:find(p1, 1, true) then
+        package.path = p1 .. ";" .. p2 .. ";" .. package.path
+    end
+
+    return vsb
 end
 
 -------------------------------------------------
--- 7. Wire button behaviors
--------------------------------------------------
-local function wire_buttons(btn1, btn2, btn3, btn4, log_view)
-    -- Button 1: scan apps
-    btn1:onevent(lvgl.EVENT.CLICKED, function(obj, code)
-        append_log(log_view, "[Button] Scan apps")
-        append_log(log_view, "Dir = " .. config.QUICKAPP_BASE)
-        local apps = app_scan.scan_all_apps(config.QUICKAPP_BASE)
-        append_log(log_view, "Found apps: " .. tostring(#apps))
-        append_log(log_view, "Apps = " .. JSON.encode(apps))
-    end)
-
-    -- Button 2: show policies
-    btn2:onevent(lvgl.EVENT.CLICKED, function(obj, code)
-        append_log(log_view, "[Button] Show policies")
-        local policies = policy.get_all_policies()
-        append_log(log_view, "Policies = " .. JSON.encode(policies))
-    end)
-
-    -- Button 3: clear log
-    btn3:onevent(lvgl.EVENT.CLICKED, function(obj, code)
-        clear_log(log_view)
-        append_log(log_view, "[Button] Log cleared")
-    end)
-
-    -- Button 4: SU 总开关
-    btn4:onevent(lvgl.EVENT.CLICKED, function(obj, code)
-        _G.SU_ENABLED = not _G.SU_ENABLED
-
-        if _G.SU_ENABLED then
-            btn4:set { text = "[SU: ON]" }
-            append_log(log_view, "[Switch] SU Daemon ENABLED")
-        else
-            btn4:set { text = "[SU: OFF]" }
-            append_log(log_view, "[Switch] SU Daemon DISABLED")
-        end
-
-        -- 如果你想完全暂停定时器，也可以在这里这样写：
-        -- if su_timer then
-        --     su_timer:set { paused = (not _G.SU_ENABLED) }
-        -- end
-        -- 目前我们只通过 if _G.SU_ENABLED then ipc.run_once() end 来控制逻辑执行。
-    end)
-end
-
--------------------------------------------------
--- 8. Entry: build(api), time via api.on_tick
+-- Entry: build(api)
 -------------------------------------------------
 local M = {}
 
 function M.build(api)
-    local root, time_label, log_view, btn1, btn2, btn3, btn4 = create_ui()
+    ensure_vsb_lua_path()
 
-    wire_buttons(btn1, btn2, btn3, btn4, log_view)
-    start_daemon(log_view)
+    -- Ensure each build runs fresh under hot-reload.
+    package.loaded["app.vela_shell_bridge"] = nil
 
-    -- Update time from api.on_tick (simulator)
-    if api and api.on_tick then
-        api.on_tick(function(epoch)
-            local t = os.date("%H:%M:%S", epoch)
-            if time_label and time_label.set then
-                time_label:set { text = t }
-            end
-        end)
-    else
-        -- Fallback: internal timer
-        lvgl.Timer {
-            period = 1000,
-            paused = false,
-            cb = function()
-                local t = os.date("%H:%M:%S")
-                if time_label and time_label.set then
-                    time_label:set { text = t }
-                end
-            end
-        }
+    local ok, app_or_err = pcall(require, "app.vela_shell_bridge")
+
+    if not ok then
+        error("VelaShellBridge app.vela_shell_bridge failed: " .. tostring(app_or_err))
     end
 
-    append_log(log_view, "UI ready on simulator")
+    local root = (type(app_or_err) == "table" and app_or_err.root) or nil
+    local time_label = (type(app_or_err) == "table" and app_or_err.time_label) or nil
+
+    if api and api.on_tick and time_label and time_label.set then
+        api.on_tick(function(epoch)
+            local t = os.date("%H:%M:%S", epoch)
+            time_label:set { text = t }
+        end)
+    end
 
     return root
 end

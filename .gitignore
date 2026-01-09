@@ -1,3 +1,7 @@
 node_modules
 build
 dist
+.vscode/tasks.json
+src/lua/app/VelaShellBridge/output
+bin
+backup

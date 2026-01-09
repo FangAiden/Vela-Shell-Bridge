@@ -2,13 +2,34 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "运行 Lua 应用",
+      "label": "推送 Lua（热部署）",
       "type": "shell",
       "command": "${workspaceFolder}\\pushlua.bat",
       "presentation": {
         "reveal": "always",
         "focus": false,
         "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "构建 Face（VelaShellBridge）",
+      "type": "shell",
+      "command": "${workspaceFolder}\\build_face.bat",
+      "presentation": {
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "构建 + 推送（一键）",
+      "dependsOn": ["构建 Face（VelaShellBridge）", "推送 Lua（热部署）"],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "build",
+        "isDefault": true
       },
       "problemMatcher": []
     }
