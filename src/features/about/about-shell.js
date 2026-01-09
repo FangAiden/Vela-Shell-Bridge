@@ -1,4 +1,4 @@
-import suIpc from "../su-ipc.js";
+import suIpc from "../../services/su-daemon/index.js";
 import { clamp, extractFirstNumber, formatBytes, safeTrim } from "./about-utils.js";
 import { getJson, setJson } from "./about-cache.js";
 

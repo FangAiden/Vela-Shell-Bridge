@@ -4,14 +4,14 @@
 
 local config    = require("app.config")
 local fs        = require("app.util.fs_util")
-local policy    = require("app.domain.policy")
-local logmod    = require("app.domain.log")
 local allowlist = require("app.domain.allowlist")
-local appscan   = require("app.domain.app_scan")
-local execmod   = require("app.domain.exec")
+local logmod    = require("app.domain.log")
+local policy    = require("app.domain.policy")
 local settings  = require("app.domain.settings")
+local router    = require("app.core.ipc_router")
+local responses = require("app.core.ipc_responses")
 
-local JSON = _G.JSON or require("app.util.json_util")
+local JSON = require("app.core.json")
 
 local M = {}
 
@@ -51,6 +51,14 @@ end
 
 local QUICKAPP_ROOT, ADMIN_FILES_DIR, ADMIN_APP_ID = normalize_quickapp_paths()
 local QUICKAPP_BASE = QUICKAPP_ROOT
+local IPC_CTX = {
+    ADMIN_APP_ID = ADMIN_APP_ID,
+    QUICKAPP_ROOT = QUICKAPP_ROOT,
+    ADMIN_FILES_DIR = ADMIN_FILES_DIR,
+    QUICKAPP_BASE = QUICKAPP_BASE,
+    APPS_JSON = config.APPS_JSON,
+    APP_INSTALL_BASE = config.APP_INSTALL_BASE,
+}
 
 local REQ_PATTERN = "^ipc_request_([%w_%-]+)%.json$"
 
@@ -62,55 +70,6 @@ local function log(msg)
     end
 end
 
-local function should_save_history()
-    return (_G.SU_SAVE_HISTORY ~= false)
-end
-
-local function trim(s)
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
-
-local function first_token(cmd)
-    if type(cmd) ~= "string" then return "" end
-    return cmd:match("^%s*(%S+)") or ""
-end
-
-local function is_cmd_blacklisted(shell_cmd)
-    if type(shell_cmd) ~= "string" or shell_cmd == "" then
-        return false
-    end
-
-    local cmd = shell_cmd
-    local token = first_token(cmd)
-    if token == "" then
-        return false
-    end
-
-    local list = (_G.SU_CMD_BLACKLIST ~= nil) and _G.SU_CMD_BLACKLIST or nil
-    if not list or type(list) ~= "table" then
-        local d = settings.get and settings.get() or {}
-        list = (d and d.cmd_blacklist) or {}
-    end
-
-    for _, it in ipairs(list) do
-        local p = trim(it)
-        if p ~= "" then
-            -- 带空格：按“包含字符串”匹配；不带空格：按“命令名”匹配
-            if p:find("%s") then
-                if cmd:find(p, 1, true) then
-                    return true, p
-                end
-            else
-                if token == p then
-                    return true, p
-                end
-            end
-        end
-    end
-
-    return false
-end
 
 ----------------------------------------------------------------------
 -- 基础工具
@@ -136,286 +95,6 @@ local function write_json_file(path, obj)
     return ok, err
 end
 
-local function ok_response(req_id, data)
-    return {
-        id   = req_id,
-        ok   = true,
-        data = data
-    }
-end
-
-local function error_response(req_id, code, message, extra)
-    local resp = {
-        id      = req_id,
-        ok      = false,
-        error   = { code = code, message = message },
-        message = message
-    }
-    if extra then
-        for k,v in pairs(extra) do
-            resp[k] = v
-        end
-    end
-    return resp
-end
-
-----------------------------------------------------------------------
--- Management 命令
-----------------------------------------------------------------------
-
-local function handle_management(app_id, req)
-    if app_id ~= ADMIN_APP_ID then
-        return error_response(req.id, "NO_PERMISSION", "Only admin app can send management commands")
-    end
-
-    local cmd  = req.cmd
-    local args = req.args or {}
-
-    if cmd == "get_policies" then
-        local data = policy.get_all_policies()
-        return ok_response(req.id, data)
-
-    elseif cmd == "get_settings" then
-        local data = settings.get and settings.get() or {}
-        return ok_response(req.id, data)
-
-    elseif cmd == "get_env" then
-        return ok_response(req.id, {
-            quickapp_root     = QUICKAPP_ROOT,
-            admin_files_dir   = ADMIN_FILES_DIR,
-            admin_app_id      = ADMIN_APP_ID,
-            apps_json         = config.APPS_JSON,
-            app_install_base  = config.APP_INSTALL_BASE,
-        })
-
-    elseif cmd == "set_settings" then
-        local ok, data_or_err = true, nil
-        if settings.update then
-            ok, data_or_err = settings.update(args or {})
-        else
-            ok, data_or_err = false, "settings module missing"
-        end
-        if not ok then
-            return error_response(req.id, "BAD_REQUEST", tostring(data_or_err or "invalid settings"))
-        end
-        return ok_response(req.id, data_or_err or {})
-
-    elseif cmd == "get_allowlist" then
-        local m = allowlist.get_all() or {}
-        local list = {}
-        for id, enabled in pairs(m) do
-            if enabled and type(id) == "string" and id ~= "" then
-                list[#list + 1] = id
-            end
-        end
-        table.sort(list)
-        return ok_response(req.id, { allowlist = list })
-
-    elseif cmd == "scan_apps" then
-        local apps, meta = {}, {}
-        if appscan.scan_installed_apps then
-            apps, meta = appscan.scan_installed_apps()
-        else
-            apps = appscan.scan_all_apps(QUICKAPP_BASE)
-            meta = {}
-        end
-
-        -- 管理器自身不参与授权列表
-        if type(apps) == "table" and #apps > 0 then
-            local filtered = {}
-            local meta2 = {}
-            for _, id in ipairs(apps) do
-                if id ~= ADMIN_APP_ID then
-                    filtered[#filtered + 1] = id
-                    if meta and meta[id] ~= nil then
-                        meta2[id] = meta[id]
-                    end
-                end
-            end
-            apps = filtered
-            meta = meta2
-        end
-
-        return ok_response(req.id, { apps = apps, meta = meta })
-
-    elseif cmd == "set_policy" then
-        local app_id2 = args.app_id
-        local pol     = args.policy
-        local ok, err = policy.set_policy(app_id2, pol)
-        if not ok then
-            return error_response(req.id, "BAD_REQUEST", err or "invalid policy")
-        end
-        return ok_response(req.id, { ok = true })
-
-    elseif cmd == "get_logs" then
-        local stats = logmod.get_logs()
-        local exec_logs = {}
-        if logmod.get_exec_logs then
-            exec_logs = logmod.get_exec_logs()
-        end
-        return ok_response(req.id, { stats = stats, exec = exec_logs })
-
-    elseif cmd == "clear_logs" then
-        logmod.clear_logs()
-        if logmod.clear_exec_logs then
-            logmod.clear_exec_logs()
-        end
-        return ok_response(req.id, { ok = true })
-
-    elseif cmd == "set_allowlist" then
-        local list = args.allowlist
-        if type(list) ~= "table" then
-            return error_response(req.id, "BAD_REQUEST", "allowlist must be a table")
-        end
-        allowlist.set_list(list)
-        return ok_response(req.id, { ok = true })
-
-    else
-        return error_response(req.id, "BAD_REQUEST", "Unknown management cmd: " .. tostring(cmd))
-    end
-end
-
-----------------------------------------------------------------------
--- Exec：执行命令 (Sync/Async) 或 Kill
-----------------------------------------------------------------------
-
-local function check_job_owner(app_id, job_id)
-    if app_id == ADMIN_APP_ID then
-        return true
-    end
-
-    if not job_id or job_id == "" then
-        return false, "job_id required"
-    end
-
-    local owner = nil
-    if execmod.get_job_owner then
-        owner = execmod.get_job_owner(job_id)
-    end
-
-    if not owner or owner == "" then
-        return false, "owner unknown"
-    end
-
-    if owner ~= app_id then
-        return false, "not owner"
-    end
-
-    return true
-end
-
-local function handle_exec(app_id, req)
-    local args = req.args or {}
-    local cmd  = req.cmd -- "exec" or "kill"
-
-    -- 1. 处理 Kill 命令 [新增]
-    if cmd == "kill" then
-        if not args.job_id then
-            return error_response(req.id, "BAD_REQUEST", "job_id required for kill")
-        end
-        local ok_owner = check_job_owner(app_id, args.job_id)
-        if not ok_owner then
-            local resp = error_response(req.id, "NO_PERMISSION", "Job not owned by app")
-            if should_save_history() and logmod.record_exec_denied then
-                pcall(logmod.record_exec_denied, app_id, "kill " .. tostring(args.job_id), resp)
-            end
-            return resp
-        end
-        -- 调用 exec.lua 的 kill_job
-        local r = execmod.kill_job(args.job_id)
-        r.id = req.id
-        if should_save_history() and logmod.record_exec_kill then
-            pcall(logmod.record_exec_kill, app_id, args.job_id, r)
-        end
-        return r
-    end
-
-    -- 下面是 exec 逻辑
-    local shell_cmd = args.shell
-    local job_id    = args.job_id
-    local is_sync   = (args.sync == true) -- [新增] 读取同步标志
-
-    -- 2. 轮询已有 Job (poll_job)
-    -- 如果传了 job_id，说明是来查状态的
-    if job_id and job_id ~= "" then
-        local ok_owner = check_job_owner(app_id, job_id)
-        if not ok_owner then
-            local resp = error_response(req.id, "NO_PERMISSION", "Job not owned by app")
-            if should_save_history() and logmod.record_exec_denied then
-                pcall(logmod.record_exec_denied, app_id, "poll " .. tostring(job_id), resp)
-            end
-            return resp
-        end
-        local r = execmod.poll_job(job_id)
-        r.id = req.id
-        if should_save_history() and r and r.state == "done" and logmod.update_exec_job then
-            pcall(logmod.update_exec_job, job_id, r)
-        end
-        return r
-    end
-
-    -- 3. 启动新 Job (start_job)
-    if not shell_cmd or shell_cmd == "" then
-        return error_response(req.id, "BAD_REQUEST", "args.shell required")
-    end
-
-    -- 黑名单命令拦截（对所有 app 生效，包括 admin）
-    local blocked, why = is_cmd_blacklisted(shell_cmd)
-    if blocked then
-        local resp = error_response(
-            req.id,
-            "CMD_BLACKLISTED",
-            "Command is blacklisted: " .. tostring(why or "")
-        )
-        if should_save_history() and logmod.record_exec_denied then
-            pcall(logmod.record_exec_denied, app_id, shell_cmd, resp)
-        end
-        return resp
-    end
-
-    if should_save_history() then
-        logmod.record_request(app_id)
-    end
-
-    -- 权限检查
-    if app_id ~= ADMIN_APP_ID then
-        local allowed, reason = policy.check_exec_allowed(app_id)
-        if not allowed then
-            local code = (reason == "DENY") and "NO_PERMISSION" or "NEED_PERMISSION"
-            local resp = error_response(
-                req.id,
-                code,
-                "App " .. app_id .. " is not allowed to execute shell (reason: " .. tostring(reason) .. ")"
-            )
-            if should_save_history() and logmod.record_exec_denied then
-                pcall(logmod.record_exec_denied, app_id, shell_cmd, resp)
-            end
-            return resp
-        end
-    end
-
-    -- 启动任务 (传入 is_sync 参数)
-    local r = execmod.start_job(shell_cmd, is_sync, app_id)
-    r.id = req.id
-    if should_save_history() and logmod.record_exec_start then
-        pcall(logmod.record_exec_start, app_id, shell_cmd, r)
-    end
-    return r
-end
-
-----------------------------------------------------------------------
--- 路由分发
-----------------------------------------------------------------------
-
-local function route_request(app_id, req)
-    if req.type == "exec" then
-        return handle_exec(app_id, req)
-    elseif req.type == "management" then
-        return handle_management(app_id, req)
-    else
-        return error_response(req.id, "BAD_REQUEST", "Unknown request type: " .. tostring(req.type))
-    end
-end
 
 ----------------------------------------------------------------------
 -- 处理单个请求文件
@@ -430,7 +109,7 @@ local function process_request_file(app_id, app_dir, file_name)
 
     local req, err = read_json_file(req_path)
     if not req then
-        local resp = error_response(id, "BAD_REQUEST", "invalid json: " .. tostring(err))
+        local resp = responses.error(id, "BAD_REQUEST", "invalid json: " .. tostring(err))
         write_json_file(resp_path, resp)
         fs.remove_file(req_path)
         return
@@ -438,10 +117,10 @@ local function process_request_file(app_id, app_dir, file_name)
 
     req.id = req.id or id
 
-    local ok, resp = pcall(route_request, app_id, req)
+    local ok, resp = pcall(router.route_request, IPC_CTX, app_id, req)
     if not ok then
         log("route_request error: " .. tostring(resp))
-        resp = error_response(req.id, "INTERNAL_ERROR", tostring(resp))
+        resp = responses.error(req.id, "INTERNAL_ERROR", tostring(resp))
     end
 
     if resp then

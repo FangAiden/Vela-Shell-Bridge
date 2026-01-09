@@ -9,7 +9,7 @@ import sensor from "@system.sensor";
 import vibrator from "@system.vibrator";
 import volume from "@system.volume";
 
-import suIpc from "../su-ipc.js";
+import suIpc from "../../services/su-daemon/index.js";
 import {
   clamp,
   compassFromDeg,

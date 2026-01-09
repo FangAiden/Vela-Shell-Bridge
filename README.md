@@ -5,6 +5,7 @@ Vela-Shell-Bridge 是一个为小米VelaOS穿戴设备设计的 QuickApp → Lua
 
 - 文件 IPC 作为通信通道
 - Lua 守护进程负责执行与回显
+- JS 侧提供 su-daemon 客户端与授权应用单文件脚本
 - 支持权限管理、执行日志、白名单
 - 可在手表和 PC 模拟器运行
 
@@ -27,191 +28,124 @@ Vela-Shell-Bridge 是一个为小米VelaOS穿戴设备设计的 QuickApp → Lua
 [Lua表盘应用文档](https://github.com/FangAiden/Lua_Watchface_Documentation)
 [Vela JS 快应用文档](https://iot.mi.com/vela/quickapp/)
 
+## 授权应用接入
+
+被授权应用可直接拷贝 `tools/su-shell.js` 使用 `exec/execSync/kill` 调用 Shell。
+主应用使用 `src/services/su-daemon/index.js`（含管理接口），只需 exec 可参考 `src/services/su-daemon/public.js`。
+
 ## 流程图
 
 ```mermaid
 sequenceDiagram
-  participant B as AppB (QuickApp)
-  participant FS as QuickApp File System<br/>/data/quickapp/files/AppB/
+  participant B as AppB (Authorized QuickApp)
+  participant JS as su-shell.js (single file client)
+  participant FS as QuickApp Files<br/>/data/files/AppB/
   participant L as Lua Daemon<br/>ipc.run_once()
-  participant EX as exec.lua
-  participant LOG as log.lua
+  participant EX as usecases/exec.lua
+  participant LOG as domain/log.lua
 
-  B->>FS: Write ipc_request_7.json<br/>{ type: "exec", args: "ls" }
+  B->>JS: exec("ls")
+  JS->>FS: Write ipc_request_{id}.json
   FS->>L: Detected on next ipc.run_once()
-  L->>EX: exec("ls")
-  EX->>EX: os.execute("ls > tmp")
-  EX->>L: return { exit_code, output }
-  L->>LOG: record count + last_ts
-  L->>FS: Write ipc_response_7.json
-  L->>FS: Delete ipc_request_7.json
-  FS->>B: AppB reads response file
+  L->>EX: handle exec
+  EX->>EX: os.execute("ls > out")
+  EX->>LOG: record request / result
+  L->>FS: Write ipc_response_{id}.json
+  JS->>FS: Read ipc_response_{id}.json
+  JS->>B: { output, exit_code }
 ```
 
-## 架构图1
+## 架构图1（系统）
 
 ```mermaid
 flowchart LR
 
-%% -------------------------------
-%% Android phone
-%% -------------------------------
-subgraph Android["Android phone"]
-  AApp["Android companion app<br/>Permission manager / Debug UI"]
-  ABridge["Communicates with AppA via QuickApp APIs<br/>(No direct file IPC)"]
-  AApp --> ABridge
-end
-
-%% -------------------------------
-%% Watch - Real Device
-%% -------------------------------
-subgraph Watch["Watch - Real Device"]
-  direction LR
-
-  %% QuickApps
-  subgraph QuickApps["QuickApp Sandboxes<br/>Path: /data/quickapp/files/AppId/"]
-    direction TB
-
-    subgraph AppA["AppA (Admin Manager)<br/>AppId = ADMIN_APP_ID"]
-      AppA_Req["ipc_request_{id}.json"]
-      AppA_Res["ipc_response_{id}.json"]
-    end
-
-    subgraph AppB["AppB (Normal App)<br/>AppId = any.other.app"]
-      AppB_Req["ipc_request_{id}.json"]
-      AppB_Res["ipc_response_{id}.json"]
-    end
+subgraph QuickApps["QuickApp 沙盒 (/data/files/AppId/)"]
+  direction TB
+  subgraph AdminApp["AppA 管理应用"]
+    AdminJS["services/su-daemon/index.js<br/>exec + management"]
+    AdminReq["ipc_request_{id}.json"]
+    AdminRes["ipc_response_{id}.json"]
+    AdminJS --> AdminReq
+    AdminRes --> AdminJS
   end
 
-  %% Lua Watchface Daemon
-  subgraph LuaDaemon["Lua SU Daemon (Watchface)<br/>Base Dir:<br/>/data/app/watchface/market/167210065/lua"]
-    direction TB
+  subgraph AuthorizedApp["AppB 被授权应用"]
+    PublicJS["tools/su-shell.js<br/>or services/su-daemon/public.js"]
+    PublicReq["ipc_request_{id}.json"]
+    PublicRes["ipc_response_{id}.json"]
+    PublicJS --> PublicReq
+    PublicRes --> PublicJS
+  end
+end
 
-    UI["app.lua<br/>Watchface UI + Daemon bootstrap<br/>- Time Label<br/>- Log Textarea<br/>- 3 Debug Buttons<br/>- Start lvgl.Timer → ipc.run_once()"]
+subgraph LuaDaemon["Lua SU Daemon"]
+  direction TB
+  IPC["app/core/ipc.lua<br/>scan + read/write JSON"]
+  Router["app/core/ipc_router.lua"]
+  Resp["app/core/ipc_responses.lua"]
 
-    subgraph Core["core/"]
-      CoreIPC["ipc.lua<br/>File IPC router<br/>- Read request JSON<br/>- Route to domain<br/>- Write response JSON"]
-    end
-
-    subgraph Domain["domain/"]
-      Policy["policy.lua<br/>allow / deny / ask / allow_once<br/>Backed by policies.json"]
-      Allowlist["allowlist.lua<br/>Allowed App List<br/>Backed by allowlist.json"]
-      LogMod["log.lua<br/>Per-app request stats<br/>Backed by requests_log.json"]
-      ExecMod["exec.lua<br/>os.execute() wrapper<br/>Redirect output to tmp file"]
-      ScanMod["app_scan.lua<br/>Scan QuickApp dirs for AppIds"]
-    end
-
-    subgraph Util["util/"]
-      FSUtil["fs_util.lua<br/>read/write/remove file<br/>list_dirs: cd DIR && ls (no flags)<br/>atomic write via .tmp → rename"]
-      JSONUtil["json_util.lua<br/>JSON.toString / JSON.toJSON"]
-    end
-
-    subgraph Data["data/ (persistent)"]
-      DF_Policies["policies.json"]
-      DF_Allowlist["allowlist.json"]
-      DF_ReqLog["requests_log.json"]
-    end
+  subgraph Usecases["usecases/"]
+    ExecUC["exec.lua"]
+    MgmtUC["management.lua"]
   end
 
-  %% Connections inside Lua daemon
-  UI --> CoreIPC
-  CoreIPC --> Policy
-  CoreIPC --> Allowlist
-  CoreIPC --> LogMod
-  CoreIPC --> ExecMod
-  CoreIPC --> ScanMod
-  CoreIPC --> FSUtil
-  CoreIPC --> JSONUtil
+  subgraph Domain["domain/"]
+    ExecDom["exec.lua"]
+    Policy["policy.lua"]
+    Allowlist["allowlist.lua"]
+    LogMod["log.lua"]
+    Settings["settings.lua"]
+    ScanMod["app_scan.lua"]
+  end
 
-  Policy --> DF_Policies
-  Allowlist --> DF_Allowlist
-  LogMod --> DF_ReqLog
-
-  %% File IPC connections
-  AppA_Req --> CoreIPC
-  CoreIPC --> AppA_Res
-
-  AppB_Req --> CoreIPC
-  CoreIPC --> AppB_Res
+  subgraph Data["data/"]
+    Policies["policies.json"]
+    Allow["allowlist.json"]
+    Logs["requests_log.json"]
+  end
 end
 
-%% -------------------------------
-%% Simulator (Dev PC)
-%% -------------------------------
-subgraph Sim["Dev PC / Simulator (Lua Only)"]
-  SimApp["app/app.lua<br/>Simulator UI + Timer"]
-  SimIPC["app/core/ipc.lua"]
-  SimDomain["app/domain/*"]
-  SimUtil["app/util/*"]
-  SimData["app/data/* (optional)"]
-
-  SimApp --> SimIPC
-  SimIPC --> SimDomain
-  SimIPC --> SimUtil
-end
+AdminReq --> IPC
+PublicReq --> IPC
+IPC --> Router
+Router --> ExecUC
+Router --> MgmtUC
+ExecUC --> ExecDom
+MgmtUC --> Policy
+MgmtUC --> Allowlist
+MgmtUC --> LogMod
+MgmtUC --> Settings
+MgmtUC --> ScanMod
+Policy --> Policies
+Allowlist --> Allow
+LogMod --> Logs
+IPC --> Resp
+IPC --> AdminRes
+IPC --> PublicRes
 
 ```
 
-## 架构图2
+## 架构图2（JS 侧）
 
 ```mermaid
-graph TB
+flowchart TB
+  subgraph Pages["视图层 pages/*.ux"]
+    Ux["index/perm/file/..."]
+  end
 
-    %% ===== 上层：快应用 =====
-    subgraph Apps["快应用层"]
-        AppA["AppA 权限管理器"]
-        AppB["AppB 普通应用"]
-    end
+  subgraph Features["功能层 features/*/page.js"]
+    F["index/perm/file/..."]
+  end
 
-    %% ===== 中间：每个应用自己的 IPC 文件 =====
-    subgraph FS["文件 IPC 层 每个应用各自沙盒"]
-        AReq["A ipc_request.json"]
-        AResp["A ipc_response.json"]
-        BReq["B ipc_request.json"]
-        BResp["B ipc_response.json"]
-    end
+  Base["app/page.js<br/>createPage()"]
+  Shared["shared/*<br/>utils + settings + ui/page-transition"]
+  UI["ui/components/*"]
+  Services["services/su-daemon/*"]
 
-    %% ===== 下层：Lua 守护进程 + 系统 =====
-    subgraph Lua["Lua 表盘守护进程"]
-        IPC["IPC 管理"]
-        Policy["权限策略管理"]
-        Log["请求日志管理"]
-        Exec["Shell 执行"]
-    end
-
-    System["NuttX 系统 层"]
-
-    %% --- AppA：只发管理命令、读管理结果 ---
-    AppA --> AReq
-    AResp --> AppA
-
-    %% --- AppB：只发执行命令、读执行结果 ---
-    AppB --> BReq
-    BResp --> AppB
-
-    %% --- Lua 只从请求文件读入 ---
-    AReq --> IPC
-    BReq --> IPC
-
-    %% --- IPC 把管理类命令交给策略模块和日志模块 ---
-    IPC --> Policy
-    IPC --> Log
-
-    %% --- IPC 把 exec 命令交给执行模块 ---
-    IPC --> Exec
-
-    %% --- 权限策略会影响执行结果（在 Exec 内部检查） ---
-    Policy --> Exec
-
-    %% --- Exec 执行完成后写回响应文件 ---
-    Exec --> BResp
-
-    %% --- 策略查询或变更的结果写回给 AppA ---
-    Policy --> AResp
-
-    %% --- Exec 真正通过 os.execute 调系统 ---
-    Exec --> System
-
-    %% --- 日志模块只和 Lua 内部日志有关 不单独连应用 ---
-    Log --> IPC
+  Pages --> Features
+  Pages --> UI
+  Features --> Base
+  Features --> Shared
+  Features --> Services
 ```

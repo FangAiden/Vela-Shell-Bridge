@@ -1,5 +1,6 @@
 local fs     = require("app.util.fs_util")
 local config = require("app.config")
+local JSON   = require("app.core.json")
 
 local M = {}
 

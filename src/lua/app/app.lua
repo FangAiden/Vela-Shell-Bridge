@@ -1,14 +1,5 @@
 local lvgl = require("lvgl")
-
--------------------------------------------------
--- 1. Init JSON
--------------------------------------------------
-local ok_json, JSON_mod = pcall(require, "app.util.json_util")
-if ok_json and JSON_mod then
-    _G.JSON = JSON_mod
-elseif not _G.JSON then
-    error("JSON module not found: please ensure app/util/json_util.lua exists and returns JSON")
-end
+local JSON = require("app.core.json")
 
 -------------------------------------------------
 -- 2. SU daemon modules
