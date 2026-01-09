@@ -429,7 +429,8 @@ sequenceDiagram
   participant ExecDom as app/domain/exec.lua
   participant Log as app/domain/log.lua
 
-  App->>Client: exec("cd /data/quickapp; ls")
+  App->>Client: exec("cd /data/quickapp")
+  Note over App,Client: 后续调用 exec("ls") 时会在该 cwd 下执行
   Client->>Files: Write ipc_request_{id}.json<br/>{ type: "exec", cmd: "exec", args: { shell, sync } }
   Files->>Lua: scanned by timer
   Lua->>Router: route_request(ctx, app_id, req)
