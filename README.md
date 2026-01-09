@@ -414,24 +414,96 @@ for (let i = 0; i < bytes.length; i += CHUNK_BYTES) {
 
 ## 流程图
 
+### 流程 1：被授权应用（文件 IPC）执行 Shell
+
 ```mermaid
 sequenceDiagram
-  participant B as AppB (Authorized QuickApp)
-  participant JS as su-shell.js (single file client)
-  participant FS as QuickApp Files<br/>/data/files/AppB/
-  participant L as Lua Daemon<br/>ipc.run_once()
-  participant EX as usecases/exec.lua
-  participant LOG as domain/log.lua
+  participant App as AppB (Authorized QuickApp)
+  participant Client as tools/su-shell.js
+  participant Files as AppB sandbox files<br/>/data/files/AppB/
+  participant Lua as Lua Daemon<br/>ipc.run_once()
+  participant Router as app/core/ipc_router.lua
+  participant ExecUC as app/usecases/exec.lua
+  participant Policy as app/domain/policy.lua
+  participant Settings as app/domain/settings.lua
+  participant ExecDom as app/domain/exec.lua
+  participant Log as app/domain/log.lua
 
-  B->>JS: exec("ls")
-  JS->>FS: Write ipc_request_{id}.json
-  FS->>L: Detected on next ipc.run_once()
-  L->>EX: handle exec
-  EX->>EX: os.execute("ls > out")
-  EX->>LOG: record request / result
-  L->>FS: Write ipc_response_{id}.json
-  JS->>FS: Read ipc_response_{id}.json
-  JS->>B: { output, exit_code }
+  App->>Client: exec("cd /data/quickapp; ls")
+  Client->>Files: Write ipc_request_{id}.json<br/>{ type: "exec", cmd: "exec", args: { shell, sync } }
+  Files->>Lua: scanned by timer
+  Lua->>Router: route_request(ctx, app_id, req)
+  Router->>ExecUC: handle(app_id, req, ctx)
+  ExecUC->>Settings: cmd_blacklist / save_history
+  ExecUC->>Policy: check_exec_allowed(app_id)
+  Note right of ExecUC: "cd ..." 会被拦截为修改 cwd<br/>不启动子进程
+  ExecUC->>ExecDom: start_job(shell, sync, app_id)<br/>（自动 cd cwd 后执行）
+  ExecDom-->>ExecUC: { exit_code, output, cwd }
+  ExecUC->>Log: record_request / record_exec_start
+  ExecUC-->>Lua: response payload
+  Lua->>Files: Write ipc_response_{id}.json
+  Client->>Files: Read ipc_response_{id}.json
+  Client-->>App: { exitCode, output, cwd }
+```
+
+### 流程 2：手机互联（Interconnect）远程执行 Shell
+
+```mermaid
+sequenceDiagram
+  participant Phone as Phone App / Script
+  participant IC as Interconnect Channel
+  participant Bridge as QuickApp bridge<br/>services/interconnect
+  participant SU as services/su-daemon (IPC client)
+  participant Files as Admin sandbox files<br/>/data/files/com.super.su.aigik/
+  participant Lua as Lua Daemon
+  participant ExecUC as app/usecases/exec.lua
+
+  Phone->>IC: send RPC JSON<br/>{ v, id, method:"shell.exec", token, params }
+  IC->>Bridge: onmessage(data)
+  Bridge->>Bridge: parse + auth(token) + dispatch
+  alt REMOTE_DISABLED / AUTH_FAILED / BAD_REQUEST
+    Bridge-->>IC: reply ok=false
+    IC-->>Phone: onmessage(reply)
+  else ok
+    Bridge->>SU: suIpc.exec(cmd)
+    SU->>Files: Write ipc_request_{id}.json (type=exec)
+    Files->>Lua: scanned by timer
+    Lua->>ExecUC: handle exec
+    ExecUC-->>Lua: response { exit_code, output, cwd }
+    Lua->>Files: Write ipc_response_{id}.json
+    SU->>Files: Read ipc_response_{id}.json
+    Bridge-->>IC: reply ok=true { exitCode, output, cwd }
+    IC-->>Phone: onmessage(reply)
+  end
+```
+
+### 流程 3：手机互联（Interconnect）文件读写（fs.read/fs.write）
+
+```mermaid
+sequenceDiagram
+  participant Phone as Phone App / Script
+  participant IC as Interconnect Channel
+  participant Bridge as QuickApp bridge<br/>services/interconnect
+  participant SU as services/su-daemon (IPC client)
+  participant Files as Admin sandbox files<br/>/data/files/com.super.su.aigik/
+  participant Lua as Lua Daemon
+  participant MgmtUC as app/usecases/management.lua
+  participant FS as (Lua) io.open / filesystem
+
+  loop repeat until eof
+    Phone->>IC: send RPC<br/>{ method:"fs.read", params:{path,offset,length,encoding:"base64"} }
+    IC->>Bridge: onmessage(data)
+    Bridge->>SU: suIpc.management("fs_read", args)
+    SU->>Files: Write ipc_request_{id}.json (type=management)
+    Files->>Lua: scanned by timer
+    Lua->>MgmtUC: handle fs_read / fs_write / fs_stat ...
+    MgmtUC->>FS: read/write bytes
+    MgmtUC-->>Lua: response { data:"base64...", next_offset, eof }
+    Lua->>Files: Write ipc_response_{id}.json
+    SU->>Files: Read ipc_response_{id}.json
+    Bridge-->>IC: reply ok=true { result }
+    IC-->>Phone: onmessage(reply)
+  end
 ```
 
 ## 架构图1（系统）
@@ -439,69 +511,107 @@ sequenceDiagram
 ```mermaid
 flowchart LR
 
-subgraph QuickApps["QuickApp 沙盒 (/data/files/AppId/)"]
+subgraph Phone["Phone（小米穿戴 / Companion / 自定义脚本）"]
   direction TB
-  subgraph AdminApp["AppA 管理应用"]
-    AdminJS["services/su-daemon/index.js<br/>exec + management"]
-    AdminReq["ipc_request_{id}.json"]
-    AdminRes["ipc_response_{id}.json"]
-    AdminJS --> AdminReq
-    AdminRes --> AdminJS
+  PhoneConn["Interconnect connection<br/>send()/onmessage"]
+  PhoneRPC["VSB RPC v1 client<br/>按 id 匹配响应"]
+  PhoneConn <--> PhoneRPC
+end
+
+subgraph Watch["Watch（VelaOS）"]
+  direction TB
+
+  subgraph AdminQuickApp["Admin QuickApp：SuperSU（com.super.su.aigik）"]
+    direction TB
+    AppEntry["src/app.ux<br/>initInterconnectBridge()"]
+    UI["pages/* + features/*<br/>UI + 业务逻辑"]
+    SuClient["services/su-daemon/*<br/>IPC client: exec + management"]
+    Bridge["services/interconnect/index.js<br/>RPC server + token"]
+    LocalSettings["shared/settings/local-settings.js<br/>remote.enabled/token"]
+
+    AppEntry --> Bridge
+    UI --> SuClient
+    UI --> LocalSettings
+    Bridge --> SuClient
+    Bridge --> LocalSettings
   end
 
-  subgraph AuthorizedApp["AppB 被授权应用"]
-    PublicJS["tools/su-shell.js<br/>or services/su-daemon/public.js"]
-    PublicReq["ipc_request_{id}.json"]
-    PublicRes["ipc_response_{id}.json"]
+  subgraph AdminFiles["Admin sandbox files<br/>/data/files/com.super.su.aigik/"]
+    AdminReq["ipc_request_{id}.json"]
+    AdminRes["ipc_response_{id}.json"]
+  end
+
+  subgraph AuthorizedApps["Authorized QuickApps（被授权）"]
+    direction TB
+    PublicJS["tools/su-shell.js（单文件客户端）"]
+    PublicReq["/data/files/{AppId}/ipc_request_{id}.json"]
+    PublicRes["/data/files/{AppId}/ipc_response_{id}.json"]
     PublicJS --> PublicReq
     PublicRes --> PublicJS
   end
+
+  subgraph LuaDaemon["Lua SU Daemon（watchface）"]
+    direction TB
+    IPC["app/core/ipc.lua<br/>scan requests + write responses"]
+    Router["app/core/ipc_router.lua"]
+    ExecUC["usecases/exec.lua<br/>policy + blacklist + cd"]
+    MgmtUC["usecases/management.lua<br/>policies + allowlist + settings + fs_* + env"]
+
+    ExecDom["domain/exec.lua<br/>jobs + per-app cwd"]
+    Policy["domain/policy.lua"]
+    Allowlist["domain/allowlist.lua"]
+    SettingsDom["domain/settings.lua"]
+    LogDom["domain/log.lua"]
+    ScanMod["domain/app_scan.lua"]
+  end
+
+  subgraph Data["Lua data（persist）"]
+    Policies["data/policies.json"]
+    Allow["data/allowlist.json"]
+    SettingsJson["data/settings.json"]
+    Logs["data/requests_log.json"]
+    ExecLogs["data/exec_logs.json"]
+  end
+
+  subgraph Jobs["Job tmp files"]
+    JobDir["tmp/su_jobs/job_{id}.*<br/>.sh/.out/.status/.pid"]
+  end
 end
 
-subgraph LuaDaemon["Lua SU Daemon"]
-  direction TB
-  IPC["app/core/ipc.lua<br/>scan + read/write JSON"]
-  Router["app/core/ipc_router.lua"]
-  Resp["app/core/ipc_responses.lua"]
+PhoneConn <--> Bridge
 
-  subgraph Usecases["usecases/"]
-    ExecUC["exec.lua"]
-    MgmtUC["management.lua"]
-  end
+SuClient --> AdminReq
+AdminRes --> SuClient
 
-  subgraph Domain["domain/"]
-    ExecDom["exec.lua"]
-    Policy["policy.lua"]
-    Allowlist["allowlist.lua"]
-    LogMod["log.lua"]
-    Settings["settings.lua"]
-    ScanMod["app_scan.lua"]
-  end
-
-  subgraph Data["data/"]
-    Policies["policies.json"]
-    Allow["allowlist.json"]
-    Logs["requests_log.json"]
-  end
-end
+PublicReq --> IPC
+IPC --> PublicRes
 
 AdminReq --> IPC
-PublicReq --> IPC
+IPC --> AdminRes
+
+Allowlist -- scan list --> IPC
+
 IPC --> Router
 Router --> ExecUC
 Router --> MgmtUC
+
 ExecUC --> ExecDom
+ExecUC --> Policy
+ExecUC --> SettingsDom
+ExecUC --> LogDom
+
 MgmtUC --> Policy
 MgmtUC --> Allowlist
-MgmtUC --> LogMod
-MgmtUC --> Settings
+MgmtUC --> SettingsDom
+MgmtUC --> LogDom
 MgmtUC --> ScanMod
+
 Policy --> Policies
 Allowlist --> Allow
-LogMod --> Logs
-IPC --> Resp
-IPC --> AdminRes
-IPC --> PublicRes
+SettingsDom --> SettingsJson
+LogDom --> Logs
+LogDom --> ExecLogs
+ExecDom --> JobDir
 
 ```
 
@@ -509,22 +619,33 @@ IPC --> PublicRes
 
 ```mermaid
 flowchart TB
+  AppEntry["src/app.ux<br/>onCreate()"]
+  InterconnectAPI["@system.interconnect"]
+  Bridge["services/interconnect/index.js<br/>RPC server + token"]
+  SuDaemon["services/su-daemon/*<br/>IPC client"]
+  LocalSettings["shared/settings/local-settings.js<br/>remote + ui + ipc + ime"]
+
   subgraph Pages["视图层 pages/*.ux"]
-    Ux["index/perm/file/..."]
+    Ux["index/perm/file/shell/setting/log/about/..."]
   end
 
   subgraph Features["功能层 features/*/page.js"]
-    F["index/perm/file/..."]
+    F["index/perm/file/shell/setting/log/about/..."]
   end
 
   Base["app/page.js<br/>createPage()"]
-  Shared["shared/*<br/>utils + settings + ui/page-transition"]
+  Shared["shared/*<br/>utils + ui/page-transition"]
   UI["ui/components/*"]
-  Services["services/su-daemon/*"]
+
+  AppEntry --> Bridge
+  Bridge --> InterconnectAPI
+  Bridge --> SuDaemon
+  Bridge --> LocalSettings
 
   Pages --> Features
   Pages --> UI
   Features --> Base
   Features --> Shared
-  Features --> Services
+  Features --> LocalSettings
+  Features --> SuDaemon
 ```
