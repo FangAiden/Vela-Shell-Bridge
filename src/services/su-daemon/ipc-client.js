@@ -3,6 +3,7 @@ import file from "@system.file";
 const BASE = "internal://files/";
 const REQUEST_TIMEOUT = 1250;
 const DAEMON_RETRY_INTERVAL = 5000;
+const NOOP = () => {};
 
 let daemonState = "unknown";
 let lastDaemonFailTime = 0;
@@ -39,7 +40,7 @@ function clampInt(n, minv, maxv, fallback) {
 function safeDelete(uri) {
   if (!file.delete) return;
   try {
-    file.delete({ uri });
+    file.delete({ uri, success: NOOP, fail: NOOP, complete: NOOP });
   } catch (_) {}
 }
 
@@ -54,6 +55,7 @@ function writeText(uri, text) {
       fail(_d, code) {
         reject(new Error(`Write failed: ${code}`));
       },
+      complete: NOOP,
     });
   });
 }
@@ -68,6 +70,7 @@ function readText(uri) {
       fail(_d, code) {
         reject(new Error(`Read failed: ${code}`));
       },
+      complete: NOOP,
     });
   });
 }

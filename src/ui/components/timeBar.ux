@@ -32,7 +32,7 @@ export default {
 	},
 
 	onClickTimeBar() {
-		router.replace({
+		router.push({
 			uri: "pages/test",
 			params: {},
 		});

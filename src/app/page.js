@@ -13,20 +13,11 @@ export function createPage(def = {}, options = {}) {
   const backOptions = options.backOptions && typeof options.backOptions === "object"
     ? options.backOptions
     : {};
-  const homeUri =
-    typeof options.homeUri === "string" && options.homeUri.trim()
-      ? options.homeUri.trim()
-      : "pages/index";
-  const isHome = options.isHome === true;
 
   const onBack = typeof options.onBack === "function"
     ? options.onBack
     : () => {
-      if (!isHome && router && typeof router.replace === "function") {
-        router.replace({ uri: homeUri, params: {} });
-        return;
-      }
-      router.back();
+      if (router && typeof router.back === "function") router.back();
     };
 
   const onShow = def.onShow;

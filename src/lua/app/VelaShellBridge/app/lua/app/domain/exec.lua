@@ -245,7 +245,7 @@ function M.start_job(shell_cmd, is_sync, app_id)
     if is_sync then
         local cwd = M.get_cwd(app_id)
         -- 直接执行命令（os.execute 本身会走 `sh -c`，返回码可靠）
-        local full_cmd = "cd " .. sh_quote(cwd) .. "\n" .. shell_cmd .. " > " .. paths.out
+        local full_cmd = "cd " .. sh_quote(cwd) .. "; " .. shell_cmd .. " > " .. paths.out
         local ok, why, code = os.execute(full_cmd)
         local exit_code = normalize_exit_code(ok, why, code)
         local output = fs.read_file(paths.out) or ""

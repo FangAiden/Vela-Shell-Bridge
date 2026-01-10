@@ -1,4 +1,4 @@
-﻿import router from "@system.router";
+import router from "@system.router";
 import prompt from "@system.prompt";
 import suExec from "../../services/su-daemon/index.js";
 import { createPage } from "../../app/page.js";
@@ -12,6 +12,7 @@ export default createPage({
       { id: "orange", src: "/resources/image/glow/orange.png" },
       { id: "cyan", src: "/resources/image/glow/cyan.png" },
       { id: "purple", src: "/resources/image/glow/purple.png" },
+      { id: "white", src: "/resources/image/glow/white.png" }
     ],
 
     cards: [
@@ -51,6 +52,12 @@ export default createPage({
         subtitle: "查看设备信息",
         image: "/resources/image/about.png",
       },
+      {
+        id: "saver",
+        title: "息屏挂机",
+        subtitle: "防止设备烧屏",
+        image: "/resources/image/saver.png",
+      }
     ],
 
     pageWidth: 0,
@@ -60,9 +67,12 @@ export default createPage({
 
   onInit() {
     this.bgOpacity = this.bgList.map((_, idx) => (idx === 0 ? 1 : 0));
+    this.currentScrollX = 0;
   },
 
   onShow() {
+    this.isLeaving = false;
+    this.animClass = "";
     this.$element("funcScroll").getScrollRect({
       success: ({ width }) => {
         if (this.cards.length > 0) {
@@ -74,8 +84,13 @@ export default createPage({
   },
 
   onScroll(e) {
-    const { scrollX } = e;
-    this.currentScrollX = scrollX || 0;
+    try {
+      const x = (e && e.scrollX != null) ? e.scrollX : 0;
+      const n = (typeof x === "number") ? x : parseFloat(String(x || "0"));
+      this.currentScrollX = isFinite(n) ? n : 0;
+    } catch (_) {
+      this.currentScrollX = 0;
+    }
     this.updateBgOpacityByScroll(this.currentScrollX);
   },
 
@@ -129,13 +144,14 @@ export default createPage({
         case "setting":
         case "log":
         case "about":
+        case "saver":
           target = "pages/" + id;
           break;
         default:
           this.isLeaving = false;
           return;
       }
-      router.replace({ uri: target, params: {} });
+      router.push({ uri: target, params: {} });
       return;
     }
 
@@ -150,6 +166,7 @@ export default createPage({
       case "setting":
       case "log":
       case "about":
+      case "saver":
         target = "pages/" + id;
         break;
       default:
@@ -159,7 +176,7 @@ export default createPage({
     }
 
     setTimeout(() => {
-      router.replace({ uri: target, params: {} });
+      router.push({ uri: target, params: {} });
     }, 180);
   },
 
@@ -179,3 +196,4 @@ export default createPage({
     }
   },
 }, { isHome: true });
+

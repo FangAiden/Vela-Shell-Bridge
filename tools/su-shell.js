@@ -8,6 +8,7 @@ const EXEC_OVERALL_TIMEOUT_MS = 30000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
 const DEFAULT_STATUS_POLL_MS = 200;
 const DAEMON_RETRY_INTERVAL_MS = 5000;
+const NOOP = () => {};
 
 // Must match Lua daemon config (src/lua/app/VelaShellBridge/app/lua/app/config.lua).
 const IPC_SLOT_COUNT = 2;
@@ -57,7 +58,7 @@ function normalizeDaemonStateOnTimeout() {
 function safeDelete(uri) {
   if (!file.delete) return;
   try {
-    file.delete({ uri });
+    file.delete({ uri, success: NOOP, fail: NOOP, complete: NOOP });
   } catch (_) {}
 }
 
@@ -72,6 +73,7 @@ function writeText(uri, text) {
       fail(_d, code) {
         reject(new Error(`Write failed: ${code}`));
       },
+      complete: NOOP,
     });
   });
 }
@@ -86,6 +88,7 @@ function readText(uri) {
       fail(_d, code) {
         reject(new Error(`Read failed: ${code}`));
       },
+      complete: NOOP,
     });
   });
 }

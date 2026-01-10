@@ -88,6 +88,9 @@
       "pages/about": {
         "component": "about"
       },
+      "pages/saver": {
+        "component": "saver"
+      },
       "pages/test": {           
         "component": "test"
       }
