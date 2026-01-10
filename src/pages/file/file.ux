@@ -103,7 +103,7 @@
               <text class="modal-btn-text">重命名</text>
             </div>
             <div class="modal-btn danger" @click="deleteTarget">
-              <text class="modal-btn-text">删除</text>
+              <text class="modal-btn-text danger-text">删除</text>
             </div>
           </div>
 
@@ -126,7 +126,7 @@
               <text class="confirm-btn-text">取消</text>
             </div>
             <div class="confirm-btn danger" @click="confirmDelete">
-              <text class="confirm-btn-text">删除</text>
+              <text class="confirm-btn-text danger-text">删除</text>
             </div>
           </div>
         </div>
@@ -479,8 +479,7 @@ export default page;
   background-color: #4a1515;
 }
 
-.danger .modal-btn-text,
-.danger .confirm-btn-text {
+.danger-text {
   color: #ff4d4f;
 }
 

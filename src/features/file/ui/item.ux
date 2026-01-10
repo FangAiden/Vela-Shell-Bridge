@@ -22,13 +22,13 @@ export default {
             index: this.index,
 		};
 	},
-	onButtonClick(e) {
+	onButtonClick() {
 		this.$emit("buttonClick", {
 			index: this.index,
             title:this.title,
 		});
 	},
-    onLongPress(e) {
+    onLongPress() {
 		this.$emit("longPress", {
 			index: this.index,
             title:this.title,
