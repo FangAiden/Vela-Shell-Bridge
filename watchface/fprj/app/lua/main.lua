@@ -147,25 +147,30 @@ local status_label = lvgl.Label(status_pill, {
 -- Log terminal card (scrollable)
 local log_card = lvgl.Object(root, {
     w = safe - 20, h = math.floor(safe * 0.50),
-    align = lvgl.ALIGN.CENTER, y = 14,
+    align = lvgl.ALIGN.CENTER, y = 0,
     bg_color = C.CARD, bg_opa = 255,
     radius = 16,
     border_width = 1, border_color = C.CARD_EDGE,
     pad_left = 10, pad_right = 10, pad_top = 8, pad_bottom = 8,
 })
+log_card:clear_flag(lvgl.FLAG.SCROLLABLE)
 
-log_view = lvgl.Label(log_card, {
-    w = safe - 46,
+log_view = lvgl.Textarea(log_card, {
+    w = safe - 40,
+    h = math.max(20, math.floor(safe * 0.50) - 16),
     text = "",
     text_color = C.TERM_TEXT,
     align = lvgl.ALIGN.TOP_LEFT,
-    long_mode = lvgl.LABEL.LONG_WRAP,
+    bg_opa = 0,
+    border_width = 0,
+    pad_left = 0, pad_right = 0, pad_top = 0, pad_bottom = 0,
 })
+log_view:add_flag(lvgl.FLAG.SCROLLABLE)
 ctx.log_view = log_view
 
 -- Bottom button bar
 local btn_bar = lvgl.Object(root, {
-    w = 310, h = 38,
+    w = 310, h = 95,
     bg_color = C.BG, border_width = 0,
     align = lvgl.ALIGN.BOTTOM_MID, y = -52,
 })
