@@ -13,6 +13,7 @@ export default createPage({
     isRunning: false,
     currentJobId: null,
     lastOutputLen: 0,
+    execMode: "async",
     imeKeyboardType: "QWERTY",
     imeVibrateMode: "short",
     imeScreenType: "circle",
@@ -105,63 +106,109 @@ export default createPage({
     this.appendLine(`> ${cmd}`);
 
     try {
-      // Start async job (don't wait for completion)
-      const startRes = await suIpc.exec(cmd, { sync: false, wait: false, timeoutMs: 5000 });
-      if (!startRes || !startRes.jobId) {
-        throw new Error("启动失败");
-      }
-
-      this.currentJobId = startRes.jobId;
-
-      // Poll for output
-      let done = false;
-      let pollCount = 0;
-      const maxPolls = 600; // 5 minutes max (600 * 500ms)
-
-      while (!done && pollCount < maxPolls) {
-        // Poll immediately on first iteration, then wait
-        if (pollCount > 0) {
-          await this.sleep(500);
-        }
-        pollCount++;
-
-        if (!this.currentJobId) {
-          // Job was killed
-          done = true;
-          break;
-        }
-
-        try {
-          const pollRes = await suIpc.poll(this.currentJobId, { timeoutMs: 3000 });
-          if (!pollRes) continue;
-
-          // Show streaming output
-          const output = pollRes.output || "";
-          if (output.length > this.lastOutputLen) {
-            this.lastOutputLen = this.appendOutput(output, this.lastOutputLen);
-          }
-
-          if (pollRes.state === "done") {
-            done = true;
-            if (pollRes.exitCode != null) {
-              this.appendLine(`[exit ${pollRes.exitCode}]`);
-            }
-          }
-        } catch (pollErr) {
-          // Poll error, continue trying
-        }
-      }
-
-      if (!done) {
-        this.appendLine("[超时]");
+      if (this.execMode === "sync") {
+        await this.runSync(cmd);
+      } else {
+        await this.runAsync(cmd);
       }
     } catch (e) {
       const msg = e && e.message ? e.message : "执行失败";
       this.appendLine(`ERR: ${msg}`);
-      prompt.showToast({ message: msg, duration: 900 });
     } finally {
       this.isRunning = false;
       this.currentJobId = null;
+    }
+  },
+
+  async runSync(cmd) {
+    let result;
+    try {
+      result = await suIpc.exec(cmd, { sync: true, timeoutMs: 30000 });
+    } catch (err) {
+      const msg = err && err.message ? err.message : "";
+      if (msg.includes("Timeout")) {
+        this.appendLine("[守护进程无响应]");
+        this.appendLine("[请检查watchface是否在前台]");
+        return;
+      }
+      throw err;
+    }
+
+    if (result && result.output) {
+      this.appendOutput(result.output, 0);
+    }
+    if (result && result.exitCode != null) {
+      this.appendLine(`[exit ${result.exitCode}]`);
+    }
+  },
+
+  async runAsync(cmd) {
+    let startRes;
+    try {
+      startRes = await suIpc.exec(cmd, { sync: false, wait: false, timeoutMs: 5000 });
+    } catch (startErr) {
+      const msg = startErr && startErr.message ? startErr.message : "";
+      if (msg.includes("Timeout")) {
+        this.appendLine("[守护进程无响应]");
+        this.appendLine("[请检查watchface是否在前台]");
+        return;
+      }
+      throw startErr;
+    }
+
+    if (!startRes || !startRes.jobId) {
+      throw new Error("启动失败");
+    }
+
+    this.currentJobId = startRes.jobId;
+
+    // Poll for output
+    let done = false;
+    let pollCount = 0;
+    let consecutiveErrors = 0;
+    const maxPolls = 600; // 5 minutes max (600 * 500ms)
+    const maxConsecutiveErrors = 5;
+
+    while (!done && pollCount < maxPolls) {
+      if (pollCount > 0) {
+        await this.sleep(500);
+      }
+      pollCount++;
+
+      if (!this.currentJobId) {
+        done = true;
+        break;
+      }
+
+      try {
+        const pollRes = await suIpc.poll(this.currentJobId, { timeoutMs: 3000 });
+        consecutiveErrors = 0;
+
+        if (!pollRes) continue;
+
+        const output = pollRes.output || "";
+        if (output.length > this.lastOutputLen) {
+          this.lastOutputLen = this.appendOutput(output, this.lastOutputLen);
+        }
+
+        if (pollRes.state === "done") {
+          done = true;
+          if (pollRes.exitCode != null) {
+            this.appendLine(`[exit ${pollRes.exitCode}]`);
+          }
+        }
+      } catch (pollErr) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          this.appendLine(`[守护进程无响应]`);
+          done = true;
+          break;
+        }
+      }
+    }
+
+    if (!done) {
+      this.appendLine("[超时]");
     }
   },
 
@@ -177,6 +224,9 @@ export default createPage({
         this.imeVibrateMode = ime.vibrateMode != null ? ime.vibrateMode : "short";
         this.imeScreenType = ime.screenType || "circle";
         this.imeMaxLength = ime.maxLength != null ? ime.maxLength : 5;
+
+        const shell = local && local.shell ? local.shell : {};
+        this.execMode = shell.execMode === "sync" ? "sync" : "async";
       },
     };
   },

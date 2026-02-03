@@ -21,13 +21,8 @@ const DEFAULTS = {
     enabled: false,
     token: "",
   },
-  ipc: {
-    jsPollIntervalMs: 200,
-  },
-  about: {
-    developerName: "",
-    developerContact: "",
-    updateUrl: "",
+  shell: {
+    execMode: "async", // "sync" | "async"
   },
   ime: {
     keyboardType: "QWERTY",
@@ -70,19 +65,9 @@ function normalize(raw) {
     if (typeof raw.remote.token === "string") out.remote.token = raw.remote.token.trim().slice(0, 32);
   }
 
-  if (raw.ipc && typeof raw.ipc === "object") {
-    if (raw.ipc.jsPollIntervalMs != null) {
-      out.ipc.jsPollIntervalMs = clampInt(raw.ipc.jsPollIntervalMs, 50, 2000, out.ipc.jsPollIntervalMs);
-    }
-  }
-
-  if (raw.about && typeof raw.about === "object") {
-    const dn = raw.about.developerName;
-    const dc = raw.about.developerContact;
-    const url = raw.about.updateUrl;
-    if (typeof dn === "string") out.about.developerName = dn.trim().slice(0, 80);
-    if (typeof dc === "string") out.about.developerContact = dc.trim().slice(0, 120);
-    if (typeof url === "string") out.about.updateUrl = url.trim().slice(0, 200);
+  if (raw.shell && typeof raw.shell === "object") {
+    const em = raw.shell.execMode;
+    if (em === "sync" || em === "async") out.shell.execMode = em;
   }
 
   if (raw.ime && typeof raw.ime === "object") {
@@ -223,22 +208,9 @@ function applyPatch(current, patch) {
     if (typeof patch.remote.token === "string") next.remote.token = patch.remote.token.trim().slice(0, 32);
   }
 
-  if (patch.ipc && typeof patch.ipc === "object") {
-    if (patch.ipc.jsPollIntervalMs != null) {
-      next.ipc.jsPollIntervalMs = clampInt(patch.ipc.jsPollIntervalMs, 50, 2000, next.ipc.jsPollIntervalMs);
-    }
-  }
-
-  if (patch.about && typeof patch.about === "object") {
-    if (typeof patch.about.developerName === "string") {
-      next.about.developerName = patch.about.developerName.trim().slice(0, 80);
-    }
-    if (typeof patch.about.developerContact === "string") {
-      next.about.developerContact = patch.about.developerContact.trim().slice(0, 120);
-    }
-    if (typeof patch.about.updateUrl === "string") {
-      next.about.updateUrl = patch.about.updateUrl.trim().slice(0, 200);
-    }
+  if (patch.shell && typeof patch.shell === "object") {
+    const em = patch.shell.execMode;
+    if (em === "sync" || em === "async") next.shell.execMode = em;
   }
 
   if (patch.ime && typeof patch.ime === "object") {
@@ -275,10 +247,6 @@ export async function updateLocalSettings(patch) {
 
 export async function setUiTransitionsEnabled(enabled) {
   return updateLocalSettings({ ui: { enableTransitions: !!enabled } });
-}
-
-export async function setJsPollIntervalMs(ms) {
-  return updateLocalSettings({ ipc: { jsPollIntervalMs: ms } });
 }
 
 export async function setRemoteEnabled(enabled) {

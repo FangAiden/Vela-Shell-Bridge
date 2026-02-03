@@ -34,16 +34,11 @@ function buildSummary(list) {
 }
 
 function callAppGetInfo() {
-  return new Promise((resolve) => {
-    try {
-      app.getInfo({
-        success: (info) => resolve(info || {}),
-        fail: () => resolve({}),
-      });
-    } catch (_) {
-      resolve({});
-    }
-  });
+  try {
+    return app.getInfo() || {};
+  } catch (_) {
+    return {};
+  }
 }
 
 function safeStr(v) {
@@ -51,16 +46,14 @@ function safeStr(v) {
   return String(v);
 }
 
-function buildDeveloperSummary(name, contact, url) {
-  const n = safeStr(name).trim();
-  const c = safeStr(contact).trim();
-  const u = safeStr(url).trim();
-  if (!n && !c && !u) return "未设置（点击填写）";
-  const parts = [];
-  if (n) parts.push(n);
-  if (c) parts.push(c);
-  if (u) parts.push("更新地址已设置");
-  return parts.join(" · ");
+function execModeLabel(mode) {
+  return mode === "sync" ? "同步" : "异步";
+}
+
+function execModeSub(mode) {
+  return mode === "sync"
+    ? "同步模式：低延迟，命令执行期间阻塞UI"
+    : "异步模式：不阻塞UI，支持实时输出和终止";
 }
 
 function buildRemoteSummary(enabled, token) {
@@ -76,14 +69,6 @@ function buildRemoteStatusText(state) {
   if (st.lastErrorMessage) return `错误：${st.lastErrorMessage}`;
   if (st.lastCloseAt) return st.lastCloseReason ? `已断开：${st.lastCloseReason}` : "已断开";
   return "等待手机连接...";
-}
-
-function readInputValue(e) {
-  try {
-    if (e && e.value != null) return safeStr(e.value);
-    if (e && e.detail && e.detail.value != null) return safeStr(e.detail.value);
-  } catch (_) {}
-  return "";
 }
 
 function splitBlacklistInput(text) {
@@ -148,7 +133,11 @@ export default createPage({
   data: {
     // local settings
     transitionsEnabled: getCachedTransitionsEnabled(),
-    jsPollMs: 200,
+
+    // exec mode
+    execMode: "async",
+    execModeLabel: execModeLabel("async"),
+    execModeSub: execModeSub("async"),
 
     // interconnect remote
     remoteEnabled: false,
@@ -166,10 +155,6 @@ export default createPage({
     appNameText: "",
     appPackageText: "",
     appVersionText: "",
-    developerNameText: "",
-    developerContactText: "",
-    updateUrlText: "",
-    developerSummary: "未设置（点击填写）",
     isCheckingUpdate: false,
 
     // modal
@@ -188,14 +173,6 @@ export default createPage({
     imeKeyboardLabel: imeKeyboardLabel(DEFAULT_IME_SETTINGS.keyboardType),
     imeVibrateLabel: imeVibrateLabel(DEFAULT_IME_SETTINGS.vibrateMode),
     imeScreenLabel: imeScreenLabel(DEFAULT_IME_SETTINGS.screenType),
-
-    // dev modal
-    showDevModal: false,
-    devModalAnim: "",
-    isSavingDev: false,
-    devNameInput: "",
-    devContactInput: "",
-    updateUrlInput: "",
   },
 
   async onShow() {
@@ -220,7 +197,12 @@ export default createPage({
     try {
       const local = await getLocalSettings();
       this.transitionsEnabled = !!(local && local.ui && local.ui.enableTransitions);
-      this.jsPollMs = clampInt(local && local.ipc ? local.ipc.jsPollIntervalMs : 200, 50, 2000, 200);
+
+      const shell = (local && local.shell && typeof local.shell === "object") ? local.shell : {};
+      const em = shell.execMode === "sync" ? "sync" : "async";
+      this.execMode = em;
+      this.execModeLabel = execModeLabel(em);
+      this.execModeSub = execModeSub(em);
 
       const remote = (local && local.remote && typeof local.remote === "object") ? local.remote : {};
       this.remoteEnabled = remote.enabled === true;
@@ -228,33 +210,26 @@ export default createPage({
       this.remoteSummary = buildRemoteSummary(this.remoteEnabled, this.remoteToken);
       this.remoteStatusText = buildRemoteStatusText(getInterconnectState());
 
-      const about = (local && local.about && typeof local.about === "object") ? local.about : {};
-      this.developerNameText = safeStr(about.developerName).trim();
-      this.developerContactText = safeStr(about.developerContact).trim();
-      this.updateUrlText = safeStr(about.updateUrl).trim();
-      this.developerSummary = buildDeveloperSummary(this.developerNameText, this.developerContactText, this.updateUrlText);
       const ime = normalizeImeSettings(local && local.ime);
       this.applyImeState(ime);
     } catch (_) {
       this.transitionsEnabled = true;
-      this.jsPollMs = 200;
+      this.execMode = "async";
+      this.execModeLabel = execModeLabel("async");
+      this.execModeSub = execModeSub("async");
       this.remoteEnabled = false;
       this.remoteToken = "";
       this.remoteSummary = buildRemoteSummary(false, "");
       this.remoteStatusText = "未启用";
-      this.developerNameText = "";
-      this.developerContactText = "";
-      this.updateUrlText = "";
-      this.developerSummary = buildDeveloperSummary("", "", "");
       this.applyImeState(DEFAULT_IME_SETTINGS);
     }
   },
 
-  async loadAppInfo() {
-    const info = await callAppGetInfo();
-    this.appNameText = String(info.name || info.appName || info.displayName || "—");
-    this.appPackageText = String(info.packageName || info.package || "—");
-    const vn = info.versionName || info.version || "";
+  loadAppInfo() {
+    const info = callAppGetInfo();
+    this.appNameText = String(info.name || "—");
+    this.appPackageText = String(info.packageName || "—");
+    const vn = info.versionName || "";
     const vc = info.versionCode != null ? String(info.versionCode) : "";
     if (vn && vc) this.appVersionText = `${vn} (${vc})`;
     else if (vn) this.appVersionText = String(vn);
@@ -314,6 +289,23 @@ export default createPage({
       prompt.showToast({ message: next ? "动画已开启" : "动画已关闭", duration: 650 });
     } catch (e) {
       this.transitionsEnabled = !next;
+      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
+    }
+  },
+
+  async onToggleExecMode() {
+    const next = this.execMode === "async" ? "sync" : "async";
+    this.execMode = next;
+    this.execModeLabel = execModeLabel(next);
+    this.execModeSub = execModeSub(next);
+    try {
+      await updateLocalSettings({ shell: { execMode: next } });
+      prompt.showToast({ message: next === "sync" ? "已切换为同步模式" : "已切换为异步模式", duration: 650 });
+    } catch (e) {
+      const prev = next === "sync" ? "async" : "sync";
+      this.execMode = prev;
+      this.execModeLabel = execModeLabel(prev);
+      this.execModeSub = execModeSub(prev);
       prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
     }
   },
@@ -455,28 +447,6 @@ export default createPage({
     }
   },
 
-  async decJsPoll() {
-    const next = clampInt(this.jsPollMs - 50, 50, 2000, 200);
-    if (next === this.jsPollMs) return;
-    this.jsPollMs = next;
-    try {
-      await updateLocalSettings({ ipc: { jsPollIntervalMs: next } });
-    } catch (e) {
-      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
-    }
-  },
-
-  async incJsPoll() {
-    const next = clampInt(this.jsPollMs + 50, 50, 2000, 200);
-    if (next === this.jsPollMs) return;
-    this.jsPollMs = next;
-    try {
-      await updateLocalSettings({ ipc: { jsPollIntervalMs: next } });
-    } catch (e) {
-      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
-    }
-  },
-
   openBlacklist() {
     this.blacklistDraft = uniqStrings(this.cmdBlacklist);
     this.showBlacklist = true;
@@ -563,72 +533,11 @@ export default createPage({
     try {
       await new Promise((r) => setTimeout(r, 350));
       prompt.showToast({
-        message:
-          this.updateUrlText
-            ? `当前版本：${this.appVersionText || "—"}\n更新：${this.updateUrlText}`
-            : `当前版本：${this.appVersionText || "—"}（未设置更新地址）`,
+        message: `当前版本：${this.appVersionText || "—"}`,
         duration: 1100,
       });
     } finally {
       this.isCheckingUpdate = false;
-    }
-  },
-
-  openDevModal() {
-    this.devNameInput = this.developerNameText || "";
-    this.devContactInput = this.developerContactText || "";
-    this.updateUrlInput = this.updateUrlText || "";
-
-    this.showDevModal = true;
-    this.devModalAnim = "";
-    setTimeout(() => {
-      this.devModalAnim = "modal-enter";
-    }, 0);
-  },
-
-  closeDevModal() {
-    this.devModalAnim = "modal-leave";
-    setTimeout(() => {
-      this.showDevModal = false;
-    }, 180);
-  },
-
-  onDevNameChange(e) {
-    this.devNameInput = readInputValue(e);
-  },
-
-  onDevContactChange(e) {
-    this.devContactInput = readInputValue(e);
-  },
-
-  onUpdateUrlChange(e) {
-    this.updateUrlInput = readInputValue(e);
-  },
-
-  async saveDevInfo() {
-    if (this.isSavingDev) return;
-    this.isSavingDev = true;
-    try {
-      const next = await updateLocalSettings({
-        about: {
-          developerName: this.devNameInput,
-          developerContact: this.devContactInput,
-          updateUrl: this.updateUrlInput,
-        },
-      });
-
-      const about = (next && next.about && typeof next.about === "object") ? next.about : {};
-      this.developerNameText = safeStr(about.developerName).trim();
-      this.developerContactText = safeStr(about.developerContact).trim();
-      this.updateUrlText = safeStr(about.updateUrl).trim();
-      this.developerSummary = buildDeveloperSummary(this.developerNameText, this.developerContactText, this.updateUrlText);
-
-      prompt.showToast({ message: "已保存", duration: 650 });
-      this.closeDevModal();
-    } catch (e) {
-      prompt.showToast({ message: e && e.message ? e.message : "保存失败", duration: 900 });
-    } finally {
-      this.isSavingDev = false;
     }
   },
 });

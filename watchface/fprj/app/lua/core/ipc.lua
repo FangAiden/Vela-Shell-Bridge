@@ -39,9 +39,16 @@ local stores = { policy, settings, logmod, allowlist }
 
 local function read_json_file(path)
     local txt = fs.read_file(path)
-    if not txt or txt == "" then return nil end
+    if not txt or txt == "" then
+        log("read_json_file: empty or nil content from " .. tostring(path))
+        return nil
+    end
     local ok, obj = pcall(JSON.decode, txt)
-    if not ok then return nil end
+    if not ok then
+        log("read_json_file: JSON decode failed: " .. tostring(obj))
+        log("raw content (first 200): " .. tostring(txt):sub(1, 200))
+        return nil
+    end
     return obj
 end
 
@@ -51,7 +58,7 @@ local function write_json_file(path, obj)
 end
 
 ----------------------------------------------------------------------
--- 扫描单个 app
+-- 扫描单个 app（带重试）
 ----------------------------------------------------------------------
 
 local function scan_app(app_id)
@@ -62,14 +69,23 @@ local function scan_app(app_id)
     -- 检查是否有请求
     if not fs.file_exists(in_path) then return end
 
-    -- 读取请求
-    local req = read_json_file(in_path)
+    -- 读取请求（带重试，避免竞态条件）
+    local req = nil
+    for attempt = 1, 3 do
+        req = read_json_file(in_path)
+        if req then break end
+        -- 等待一小段时间后重试
+        if attempt < 3 then
+            local start = os.clock()
+            while os.clock() - start < 0.05 do end  -- ~50ms delay
+        end
+    end
 
     -- 立即删除请求文件（避免重复处理）
     fs.remove_file(in_path)
 
     if not req then
-        log("Invalid request from " .. app_id)
+        log("Invalid request from " .. app_id .. " after retries")
         return
     end
 

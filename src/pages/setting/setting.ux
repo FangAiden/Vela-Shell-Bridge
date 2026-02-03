@@ -17,6 +17,16 @@
         <div class="section">
           <text class="section-title">执行与日志</text>
 
+          <div class="card" onclick="onToggleExecMode">
+            <div class="card-texts">
+              <text class="card-title lines-1">终端执行模式</text>
+              <text class="card-sub lines-2">{{ execModeSub }}</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ execModeLabel }}</text>
+            </div>
+          </div>
+
           <div class="card" onclick="onToggleSaveHistory">
             <div class="card-texts">
               <text class="card-title lines-1">记录历史命令</text>
@@ -50,22 +60,6 @@
               </div>
               <text class="step-value lines-1">{{ daemonPollMs }}ms</text>
               <div class="step-btn" onclick="incDaemonPoll">
-                <text class="step-btn-text">+</text>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-texts">
-              <text class="card-title lines-1">JS 轮询频率</text>
-              <text class="card-sub lines-2">异步任务轮询间隔（ms）</text>
-            </div>
-            <div class="stepper">
-              <div class="step-btn" onclick="decJsPoll">
-                <text class="step-btn-text">-</text>
-              </div>
-              <text class="step-value lines-1">{{ jsPollMs }}ms</text>
-              <div class="step-btn" onclick="incJsPoll">
                 <text class="step-btn-text">+</text>
               </div>
             </div>
@@ -184,20 +178,8 @@
             </div>
             <div class="info-row">
               <text class="info-key">开发者</text>
-              <text class="info-val lines-1">{{ developerNameText || '未设置' }}</text>
+              <text class="info-val lines-1">极客之爱</text>
             </div>
-            <div class="info-row">
-              <text class="info-key">联系</text>
-              <text class="info-val lines-1">{{ developerContactText || '—' }}</text>
-            </div>
-          </div>
-
-          <div class="card" onclick="openDevModal">
-            <div class="card-texts">
-              <text class="card-title lines-1">开发者信息</text>
-              <text class="card-sub lines-2">{{ developerSummary }}</text>
-            </div>
-            <image class="arrow" src="/resources/image/right_arrow.png"></image>
           </div>
 
           <div class="action-row">
@@ -247,34 +229,6 @@
             </div>
             <div class="modal-btn modal-btn-primary {{ isSavingBlacklist ? 'modal-btn-busy' : '' }}" onclick="saveBlacklist">
               <text class="modal-btn-text">{{ isSavingBlacklist ? '保存中...' : '保存' }}</text>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 开发者信息弹窗 -->
-      <div class="modal-mask {{ devModalAnim }}" show="{{ showDevModal }}">
-        <div class="modal">
-          <text class="modal-title lines-1">开发者信息</text>
-          <text class="modal-sub lines-2">用于“关于应用”展示（本地保存）</text>
-
-          <div class="form">
-            <text class="form-label">开发者</text>
-            <input class="form-input" value="{{ devNameInput }}" placeholder="例如：Aiden" @change="onDevNameChange"></input>
-
-            <text class="form-label">联系</text>
-            <input class="form-input" value="{{ devContactInput }}" placeholder="邮箱/QQ/群号" @change="onDevContactChange"></input>
-
-            <text class="form-label">更新地址</text>
-            <input class="form-input" value="{{ updateUrlInput }}" placeholder="https://..." @change="onUpdateUrlChange"></input>
-          </div>
-
-          <div class="modal-actions">
-            <div class="modal-btn" onclick="closeDevModal">
-              <text class="modal-btn-text">取消</text>
-            </div>
-            <div class="modal-btn modal-btn-primary {{ isSavingDev ? 'modal-btn-busy' : '' }}" onclick="saveDevInfo">
-              <text class="modal-btn-text">{{ isSavingDev ? '保存中...' : '保存' }}</text>
             </div>
           </div>
         </div>

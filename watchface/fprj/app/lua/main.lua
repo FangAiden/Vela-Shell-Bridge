@@ -76,66 +76,144 @@ local function init_daemon_state()
 end
 
 -------------------------------------------------
--- UI
+-- UI: Theme
+-------------------------------------------------
+local C = {
+    BG         = 0x000000,
+    CARD       = 0x111111,
+    CARD_EDGE  = 0x2a2a2a,
+    GREEN      = 0x00d36f,
+    GREEN_DIM  = 0x0f2618,
+    RED        = 0xff5555,
+    RED_DIM    = 0x2a0f0f,
+    TERM_TEXT  = 0x50fa7b,
+    TEXT       = 0xf2f2f2,
+    TEXT_DIM   = 0x7a7a7a,
+    BTN_BG     = 0x1a1a1a,
+    BTN_EDGE   = 0x333333,
+}
+
+-------------------------------------------------
+-- UI: Layout
 -------------------------------------------------
 local screen_w = lvgl.HOR_RES()
 local screen_h = lvgl.VER_RES()
 local diameter = math.min(screen_w, screen_h)
-local safe_size = diameter - 40
-if safe_size < 100 then safe_size = diameter end
+local safe = diameter - 40
+if safe < 100 then safe = diameter end
 
+-- Root
 local root = lvgl.Object(nil, {
     w = screen_w, h = screen_h,
     align = lvgl.ALIGN.CENTER,
-    bg_color = 0x000000, border_width = 0,
+    bg_color = C.BG, bg_opa = 255,
+    border_width = 0,
 })
 root:clear_flag(lvgl.FLAG.SCROLLABLE)
 root:add_flag(lvgl.FLAG.EVENT_BUBBLE)
 
-local time_label = lvgl.Label(root, {
-    text = "--:--:--",
-    text_color = 0xCCCCCC,
-    align = lvgl.ALIGN.TOP_MID, y = 6,
+-- Top bar: time left + status right
+local top_bar = lvgl.Object(root, {
+    w = 250, h = 34,
+    align = lvgl.ALIGN.TOP_MID, y = 50,
+    bg_color = C.BG, border_width = 0,
+})
+top_bar:clear_flag(lvgl.FLAG.SCROLLABLE)
+
+-- Time (left side of top bar)
+local time_label = lvgl.Label(top_bar, {
+    text = "--:--",
+    text_color = C.TEXT_DIM,
+    align = lvgl.ALIGN.LEFT_MID, x = 4,
 })
 
-local btn_toggle = lvgl.Label(root, {
-    text = ctx.enabled and "[SU: ON]" or "[SU: OFF]",
-    text_color = 0xCCCCCC,
-    align = lvgl.ALIGN.TOP_MID, y = 40,
+-- Status pill (right side of top bar, clickable)
+local status_pill = lvgl.Object(top_bar, {
+    w = 130, h = 30,
+    align = lvgl.ALIGN.RIGHT_MID,
+    bg_color = C.GREEN_DIM, bg_opa = 255,
+    radius = 15,
+    border_width = 1, border_color = C.GREEN,
 })
-btn_toggle:add_flag(lvgl.FLAG.CLICKABLE)
+status_pill:clear_flag(lvgl.FLAG.SCROLLABLE)
+status_pill:add_flag(lvgl.FLAG.CLICKABLE)
 
-log_view = lvgl.Label(root, {
-    w = safe_size - 20,
-    h = math.floor(safe_size * 0.55),
-    text = "",
-    text_color = 0xEEEEEE, bg_color = 0x202020,
+local status_label = lvgl.Label(status_pill, {
+    text = "SU ON",
+    text_color = C.GREEN,
     align = lvgl.ALIGN.CENTER,
+})
+
+-- Log terminal card (scrollable)
+local log_card = lvgl.Object(root, {
+    w = safe - 20, h = math.floor(safe * 0.50),
+    align = lvgl.ALIGN.CENTER, y = 14,
+    bg_color = C.CARD, bg_opa = 255,
+    radius = 16,
+    border_width = 1, border_color = C.CARD_EDGE,
+    pad_left = 10, pad_right = 10, pad_top = 8, pad_bottom = 8,
+})
+
+log_view = lvgl.Label(log_card, {
+    w = safe - 46,
+    text = "",
+    text_color = C.TERM_TEXT,
+    align = lvgl.ALIGN.TOP_LEFT,
     long_mode = lvgl.LABEL.LONG_WRAP,
 })
 ctx.log_view = log_view
 
+-- Bottom button bar
 local btn_bar = lvgl.Object(root, {
-    w = 310, h = 40,
-    bg_color = 0x000000, border_width = 0,
-    align = lvgl.ALIGN.BOTTOM_MID, y = -40,
+    w = 310, h = 38,
+    bg_color = C.BG, border_width = 0,
+    align = lvgl.ALIGN.BOTTOM_MID, y = -52,
 })
 btn_bar:clear_flag(lvgl.FLAG.SCROLLABLE)
 
-local btn_scan = lvgl.Label(btn_bar, { text = "[Scan]", text_color = 0xCCCCCC, align = lvgl.ALIGN.LEFT_MID })
-btn_scan:add_flag(lvgl.FLAG.CLICKABLE)
+-- Pill button factory
+local function make_btn(parent, text, align_mode)
+    local pill = lvgl.Object(parent, {
+        w = 84, h = 34,
+        align = align_mode,
+        bg_color = C.BTN_BG, bg_opa = 255,
+        radius = 17,
+        border_width = 1, border_color = C.BTN_EDGE,
+    })
+    pill:clear_flag(lvgl.FLAG.SCROLLABLE)
+    pill:add_flag(lvgl.FLAG.CLICKABLE)
+    lvgl.Label(pill, {
+        text = text,
+        text_color = C.TEXT,
+        align = lvgl.ALIGN.CENTER,
+    })
+    return pill
+end
 
-local btn_policies = lvgl.Label(btn_bar, { text = "[Policies]", text_color = 0xCCCCCC, align = lvgl.ALIGN.CENTER })
-btn_policies:add_flag(lvgl.FLAG.CLICKABLE)
+local btn_scan     = make_btn(btn_bar, "Scan",   lvgl.ALIGN.LEFT_MID)
+local btn_policies = make_btn(btn_bar, "Policy", lvgl.ALIGN.CENTER)
+local btn_clear    = make_btn(btn_bar, "Clear",  lvgl.ALIGN.RIGHT_MID)
 
-local btn_clear = lvgl.Label(btn_bar, { text = "[Clear]", text_color = 0xCCCCCC, align = lvgl.ALIGN.RIGHT_MID })
-btn_clear:add_flag(lvgl.FLAG.CLICKABLE)
+-------------------------------------------------
+-- UI: Status update helper
+-------------------------------------------------
+local function update_status_ui()
+    if ctx.enabled then
+        pcall(function() status_pill:set { bg_color = C.GREEN_DIM, border_color = C.GREEN } end)
+        pcall(function() status_dot:set  { bg_color = C.GREEN } end)
+        pcall(function() status_label:set { text = "SU Daemon" } end)
+    else
+        pcall(function() status_pill:set { bg_color = C.RED_DIM, border_color = C.RED } end)
+        pcall(function() status_dot:set  { bg_color = C.RED } end)
+        pcall(function() status_label:set { text = "SU Stopped" } end)
+    end
+end
 
 -------------------------------------------------
 -- Button handlers
 -------------------------------------------------
 btn_scan:onevent(lvgl.EVENT.CLICKED, function()
-    append_log("[Scan] Dir = " .. config.QUICKAPP_BASE)
+    append_log("[Scan] " .. config.QUICKAPP_BASE)
     local apps = app_scan.scan_all_apps(config.QUICKAPP_BASE)
     append_log("Found " .. #apps .. " apps")
     append_log(JSON.encode(apps))
@@ -151,9 +229,9 @@ btn_clear:onevent(lvgl.EVENT.CLICKED, function()
     append_log("Log cleared")
 end)
 
-btn_toggle:onevent(lvgl.EVENT.CLICKED, function()
+status_pill:onevent(lvgl.EVENT.CLICKED, function()
     ctx.enabled = not ctx.enabled
-    btn_toggle:set { text = ctx.enabled and "[SU: ON]" or "[SU: OFF]" }
+    update_status_ui()
     append_log("SU Daemon " .. (ctx.enabled and "ENABLED" or "DISABLED"))
 end)
 
@@ -161,6 +239,7 @@ end)
 -- Daemon timer
 -------------------------------------------------
 init_daemon_state()
+update_status_ui()
 
 local period_ms = num.clamp_int(ctx.daemon_period_ms, 50, 2000, 300)
 local current_period_ms = period_ms
@@ -181,11 +260,11 @@ lvgl.Timer {
         if desired ~= current_period_ms then
             current_period_ms = desired
             pcall(function() self:set({ period = desired }) end)
-            append_log("Daemon period -> " .. desired .. " ms")
+            append_log("Period -> " .. desired .. " ms")
         end
 
         pcall(ipc.run_once)
     end
 }
 
-append_log("UI ready (" .. period_ms .. " ms)")
+append_log("Ready (" .. period_ms .. " ms)")
