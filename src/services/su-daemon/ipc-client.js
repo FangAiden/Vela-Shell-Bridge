@@ -8,7 +8,7 @@ const NOOP = () => {};
 let daemonState = "unknown";
 let lastDaemonFailTime = 0;
 
-// Must match Lua daemon config (src/lua/app/VelaShellBridge/app/lua/app/config.lua).
+// Must match Lua daemon config (watchface/fprj/app/lua/su_config.lua).
 const IPC_SLOT_COUNT = 2;
 const IPC_PENDING = "ipc_pending";
 
