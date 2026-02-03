@@ -1,5 +1,5 @@
 -- app/core/ipc_responses.lua
--- IPC response helpers shared by router/usecases.
+-- IPC response helpers for router.
 
 local M = {}
 

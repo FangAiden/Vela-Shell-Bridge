@@ -11,6 +11,8 @@ export default createPage({
     showIme: false,
     imeInput: "",
     isRunning: false,
+    currentJobId: null,
+    lastOutputLen: 0,
     imeKeyboardType: "QWERTY",
     imeVibrateMode: "short",
     imeScreenType: "circle",
@@ -22,12 +24,17 @@ export default createPage({
       this.closeIme();
       return true;
     }
+    // If running, kill the job
+    if (this.isRunning && this.currentJobId) {
+      this.killCurrentJob();
+      return true;
+    }
     return false;
   },
 
   openIme() {
     if (this.isRunning) {
-      prompt.showToast({ message: "命令执行中，请稍后", duration: 700 });
+      prompt.showToast({ message: "按返回键终止命令", duration: 700 });
       return;
     }
     this.imeInput = this.inputBuffer || "";
@@ -71,27 +78,82 @@ export default createPage({
     this.textList = next;
   },
 
-  appendOutput(output) {
-    const lines = String(output == null ? "" : output)
-      .split(/\r?\n/)
-      .filter((x) => x !== "");
-    if (!lines.length) {
-      this.appendLine("(无输出)");
-      return;
-    }
+  appendOutput(output, fromOffset = 0) {
+    const full = String(output == null ? "" : output);
+    const newPart = full.slice(fromOffset);
+    const lines = newPart.split(/\r?\n/).filter((x) => x !== "");
     lines.forEach((line) => this.appendLine(line));
+    return full.length;
+  },
+
+  async killCurrentJob() {
+    if (!this.currentJobId) return;
+    try {
+      await suIpc.kill(this.currentJobId);
+      this.appendLine("[已终止]");
+    } catch (e) {
+      // ignore
+    }
+    this.isRunning = false;
+    this.currentJobId = null;
   },
 
   async runCommand(cmd) {
     if (this.isRunning) return;
     this.isRunning = true;
+    this.lastOutputLen = 0;
     this.appendLine(`> ${cmd}`);
+
     try {
-      const res = await suIpc.exec(cmd, { sync: true, timeoutMs: 8000 });
-      const out = res && res.output != null ? res.output : "";
-      this.appendOutput(out);
-      if (res && res.exitCode != null) {
-        this.appendLine(`[exit ${res.exitCode}]`);
+      // Start async job (don't wait for completion)
+      const startRes = await suIpc.exec(cmd, { sync: false, wait: false, timeoutMs: 5000 });
+      if (!startRes || !startRes.jobId) {
+        throw new Error("启动失败");
+      }
+
+      this.currentJobId = startRes.jobId;
+
+      // Poll for output
+      let done = false;
+      let pollCount = 0;
+      const maxPolls = 600; // 5 minutes max (600 * 500ms)
+
+      while (!done && pollCount < maxPolls) {
+        // Poll immediately on first iteration, then wait
+        if (pollCount > 0) {
+          await this.sleep(500);
+        }
+        pollCount++;
+
+        if (!this.currentJobId) {
+          // Job was killed
+          done = true;
+          break;
+        }
+
+        try {
+          const pollRes = await suIpc.poll(this.currentJobId, { timeoutMs: 3000 });
+          if (!pollRes) continue;
+
+          // Show streaming output
+          const output = pollRes.output || "";
+          if (output.length > this.lastOutputLen) {
+            this.lastOutputLen = this.appendOutput(output, this.lastOutputLen);
+          }
+
+          if (pollRes.state === "done") {
+            done = true;
+            if (pollRes.exitCode != null) {
+              this.appendLine(`[exit ${pollRes.exitCode}]`);
+            }
+          }
+        } catch (pollErr) {
+          // Poll error, continue trying
+        }
+      }
+
+      if (!done) {
+        this.appendLine("[超时]");
       }
     } catch (e) {
       const msg = e && e.message ? e.message : "执行失败";
@@ -99,7 +161,12 @@ export default createPage({
       prompt.showToast({ message: msg, duration: 900 });
     } finally {
       this.isRunning = false;
+      this.currentJobId = null;
     }
+  },
+
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   },
 }, {
   transitions() {

@@ -1,13 +1,25 @@
 <script>
 import { initInterconnectBridge } from "./services/interconnect/index.js";
+import storage from "@system.storage";
 
 export default {
-  onCreate() {
-    console.log("app created");
-    initInterconnectBridge().catch(() => {});
-  },
-  onDestroy() {
-    console.log("app destroyed");
-  }
-}
+	onCreate() {
+		console.log("app created");
+		initInterconnectBridge().catch(() => {});
+
+		storage.set({
+			key: "A1",
+			value: "V1",
+			success: function (data) {
+				console.log("handling success");
+			},
+			fail: function (data, code) {
+				console.log(`handling fail, code = ${code}`);
+			},
+		});
+	},
+	onDestroy() {
+		console.log("app destroyed");
+	},
+};
 </script>

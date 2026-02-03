@@ -15,13 +15,6 @@ CONFIG.TMP_DIR = CONFIG.BASE_DIR .. "/tmp"
 -- QuickApp sandbox root (the actual path of internal://files). Used for IPC scanning.
 CONFIG.QUICKAPP_BASE = "/data/files"
 
--- IPC optimization: fixed-slot mailbox.
-CONFIG.IPC_SLOT_COUNT = 2
-
--- Hot/cold backoff for per-app pending checks (ms).
-CONFIG.IPC_COLD_BASE_MS = 200
-CONFIG.IPC_COLD_MAX_MS = 5000
-
 -- Log limits
 CONFIG.MAX_EXEC_LOGS = 80
 CONFIG.MAX_OUTPUT_LEN = 2048
