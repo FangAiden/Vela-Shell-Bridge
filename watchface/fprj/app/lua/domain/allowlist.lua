@@ -32,14 +32,17 @@ function M.remove(app_id)
 end
 
 function M.set_list(list)
-    s.data = {}
+    -- Build new table first, then atomically replace to avoid race conditions
+    local new_data = {}
     if type(list) == "table" then
         for _, app_id in ipairs(list) do
             if type(app_id) == "string" and app_id ~= "" then
-                s.data[app_id] = true
+                new_data[app_id] = true
             end
         end
     end
+    -- Atomic replacement
+    s.data = new_data
     s.mark_dirty()
 end
 

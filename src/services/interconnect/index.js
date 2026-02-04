@@ -36,6 +36,32 @@ function safeStr(v) {
   return String(v);
 }
 
+/**
+ * Generate a secure random token (16 alphanumeric characters).
+ * Falls back to Math.random if crypto is unavailable.
+ */
+function genSecureToken() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const len = 16;
+  let result = "";
+
+  // Use crypto.getRandomValues if available for better randomness
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const arr = new Uint8Array(len);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < len; i++) {
+      result += chars[arr[i] % chars.length];
+    }
+  } else {
+    // Fallback to Math.random (still much better than 6 digits)
+    for (let i = 0; i < len; i++) {
+      result += chars[Math.floor(Math.random() * chars.length)];
+    }
+  }
+  return result;
+}
+
+// Keep legacy function for backwards compatibility
 function genToken6() {
   const n = Math.floor(Math.random() * 1000000);
   return String(n).padStart(6, "0");
@@ -51,7 +77,7 @@ async function loadRemoteConfig() {
 async function ensureTokenIfEnabled() {
   if (!STATE.remoteEnabled) return;
   if (STATE.token) return;
-  const nextToken = genToken6();
+  const nextToken = genSecureToken();
   const next = await updateLocalSettings({ remote: { token: nextToken } }).catch(() => null);
   const remote = next && typeof next.remote === "object" ? next.remote : {};
   STATE.token = safeStr(remote.token).trim() || nextToken;

@@ -14,10 +14,15 @@ local policy    = require("domain.policy")
 local settings  = require("domain.settings")
 local router    = require("core.ipc_router")
 local JSON      = require("core.json")
+local execmod   = require("domain.exec")
 
 local M = {}
 
 local log = ulog.create("ipc")
+
+-- GC configuration
+local GC_INTERVAL_TICKS = 100  -- Run GC every 100 ticks (~30 seconds at 300ms interval)
+local gc_tick_counter = 0
 
 -- 路径配置
 local QUICKAPP_BASE = str.trim_trailing_slashes(config.QUICKAPP_BASE or "/data/files")
@@ -37,21 +42,6 @@ local stores = { policy, settings, logmod, allowlist }
 -- 工具函数
 ----------------------------------------------------------------------
 
-local function read_json_file(path)
-    local txt = fs.read_file(path)
-    if not txt or txt == "" then
-        log("read_json_file: empty or nil content from " .. tostring(path))
-        return nil
-    end
-    local ok, obj = pcall(JSON.decode, txt)
-    if not ok then
-        log("read_json_file: JSON decode failed: " .. tostring(obj))
-        log("raw content (first 200): " .. tostring(txt):sub(1, 200))
-        return nil
-    end
-    return obj
-end
-
 local function write_json_file(path, obj)
     local txt = JSON.encode(obj)
     return fs.write_file(path, txt)
@@ -70,10 +60,18 @@ local function scan_app(app_id)
     if not fs.file_exists(in_path) then return end
 
     -- 读取请求（带重试，避免竞态条件）
+    -- 注意：先读取完成后再删除，避免重试时文件已被删除
     local req = nil
+    local raw_content = nil
     for attempt = 1, 3 do
-        req = read_json_file(in_path)
-        if req then break end
+        raw_content = fs.read_file(in_path)
+        if raw_content and raw_content ~= "" then
+            local ok, obj = pcall(JSON.decode, raw_content)
+            if ok and obj then
+                req = obj
+                break
+            end
+        end
         -- 等待一小段时间后重试
         if attempt < 3 then
             local start = os.clock()
@@ -81,11 +79,14 @@ local function scan_app(app_id)
         end
     end
 
-    -- 立即删除请求文件（避免重复处理）
+    -- 读取成功或所有重试完成后再删除请求文件（避免重复处理）
     fs.remove_file(in_path)
 
     if not req then
         log("Invalid request from " .. app_id .. " after retries")
+        if raw_content then
+            log("raw content (first 200): " .. tostring(raw_content):sub(1, 200))
+        end
         return
     end
 
@@ -137,6 +138,29 @@ function M.run_once()
     for _, s in ipairs(stores) do
         if s.save_if_dirty then
             s.save_if_dirty()
+        end
+    end
+
+    -- 4. Periodic GC for session/CWD cleanup (every GC_INTERVAL_TICKS)
+    gc_tick_counter = gc_tick_counter + 1
+    if gc_tick_counter >= GC_INTERVAL_TICKS then
+        gc_tick_counter = 0
+        -- Build list of valid app IDs (admin + allowlist)
+        local valid_ids = { ADMIN_APP_ID }
+        local all_apps = allowlist.get_all()
+        if all_apps then
+            for app_id, enabled in pairs(all_apps) do
+                if enabled then
+                    valid_ids[#valid_ids + 1] = app_id
+                end
+            end
+        end
+        -- Clean up stale session policies and CWD entries
+        if policy.gc_session then
+            pcall(policy.gc_session, valid_ids)
+        end
+        if execmod.gc_cwd_map then
+            pcall(execmod.gc_cwd_map, valid_ids)
         end
     end
 end

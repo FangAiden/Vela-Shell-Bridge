@@ -31,19 +31,35 @@ local function parse_cd_cmd(shell_cmd)
     return false, nil
 end
 
+--- Extract the base command name from a possibly path-qualified command.
+--- e.g., "/system/bin/rm" -> "rm", "rm" -> "rm"
+local function get_base_cmd_name(cmd_token)
+    if not cmd_token or cmd_token == "" then return "" end
+    -- Extract basename (after last /)
+    local base = cmd_token:match("([^/]+)$")
+    return base or cmd_token
+end
+
 local function is_cmd_blacklisted(shell_cmd)
     if type(shell_cmd) ~= "string" or shell_cmd == "" then return false end
     local token = str.first_token(shell_cmd)
     if token == "" then return false end
+
+    -- Get the base name to prevent path-based bypass (e.g., /system/bin/rm)
+    local base_name = get_base_cmd_name(token)
+
     local list = ctx.cmd_blacklist
     if not list or type(list) ~= "table" then return false end
+
     for _, it in ipairs(list) do
         local p = str.trim(it)
         if p ~= "" then
             if p:find("%s") then
+                -- Pattern contains space: check as substring in full command
                 if shell_cmd:find(p, 1, true) then return true, p end
             else
-                if token == p then return true, p end
+                -- Single word pattern: match against both full path and basename
+                if token == p or base_name == p then return true, p end
             end
         end
     end

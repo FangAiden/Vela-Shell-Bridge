@@ -81,4 +81,19 @@ function M.get_all_policies()
     return s.data
 end
 
+--- Clean up session entries for apps no longer in the valid set.
+--- Call this periodically with the current allowlist to prevent memory leaks.
+function M.gc_session(valid_app_ids)
+    if type(valid_app_ids) ~= "table" then return end
+    local valid_set = {}
+    for _, id in ipairs(valid_app_ids) do
+        valid_set[id] = true
+    end
+    for app_id, _ in pairs(M.session) do
+        if not valid_set[app_id] then
+            M.session[app_id] = nil
+        end
+    end
+end
+
 return M

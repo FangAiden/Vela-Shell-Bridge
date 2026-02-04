@@ -3,6 +3,7 @@ import file from "@system.file";
 const BASE = "internal://files/";
 const REQUEST_TIMEOUT = 1500;
 const POLL_INTERVAL = 80;
+const MAX_QUEUE_LENGTH = 50;  // Maximum pending requests to prevent memory leaks
 const NOOP = () => {};
 
 export class DaemonUnavailableError extends Error {
@@ -89,6 +90,8 @@ function doSendRequest(payload, options) {
       if (settled) return;
       settled = true;
       if (pollTimer) clearInterval(pollTimer);
+      // Clean up request file on timeout to prevent stale requests
+      deleteFile(inUri).catch(NOOP);
       reject(new DaemonUnavailableError(`Timeout ${timeoutMs}ms (id=${id})`));
     }, timeoutMs);
 
@@ -130,11 +133,17 @@ function doSendRequest(payload, options) {
 /**
  * Send IPC request using 2-file protocol:
  *   - Requests are queued to ensure only one at a time
+ *   - Queue has a maximum length to prevent memory leaks
  *   - Write request to ipc_in.json
  *   - Poll ipc_out.json for response
  */
 export function sendIpcRequest(payload, options = {}) {
   return new Promise((resolve, reject) => {
+    // Prevent queue from growing unboundedly
+    if (requestQueue.length >= MAX_QUEUE_LENGTH) {
+      reject(new DaemonUnavailableError(`Request queue full (max=${MAX_QUEUE_LENGTH})`));
+      return;
+    }
     requestQueue.push({ payload, options, resolve, reject });
     processQueue();
   });

@@ -13,10 +13,14 @@ function M.trim_trailing_slashes(p)
     return (p:gsub("/+$", ""))
 end
 
+--- Safely quote a string for shell usage.
+--- Uses single quotes to avoid shell expansion of $, `, \, etc.
+--- Single quotes inside the string are escaped as: '\''
 function M.sh_quote(s)
     s = tostring(s or "")
-    s = s:gsub('"', '\\"')
-    return '"' .. s .. '"'
+    -- Use single quotes: safe from $, `, \, ! expansion
+    -- Escape embedded single quotes by ending the string, adding escaped quote, and restarting
+    return "'" .. s:gsub("'", "'\\''") .. "'"
 end
 
 function M.safe_str(v)

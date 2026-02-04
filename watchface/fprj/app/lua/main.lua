@@ -41,7 +41,8 @@ local function refresh_log_view()
 end
 
 ctx.log_fn = function(msg)
-    local ts = os.date("%H:%M:%S")
+    -- Include date for cross-day log identification
+    local ts = os.date("%m-%d %H:%M:%S")
     local line = "[" .. ts .. "] " .. tostring(msg)
     log_lines[#log_lines + 1] = line
     if #log_lines > 100 then table.remove(log_lines, 1) end
@@ -205,12 +206,10 @@ local btn_clear    = make_btn(btn_bar, "Clear",  lvgl.ALIGN.RIGHT_MID)
 local function update_status_ui()
     if ctx.enabled then
         pcall(function() status_pill:set { bg_color = C.GREEN_DIM, border_color = C.GREEN } end)
-        pcall(function() status_dot:set  { bg_color = C.GREEN } end)
-        pcall(function() status_label:set { text = "SU Daemon" } end)
+        pcall(function() status_label:set { text = "SU Daemon", text_color = C.GREEN } end)
     else
         pcall(function() status_pill:set { bg_color = C.RED_DIM, border_color = C.RED } end)
-        pcall(function() status_dot:set  { bg_color = C.RED } end)
-        pcall(function() status_label:set { text = "SU Stopped" } end)
+        pcall(function() status_label:set { text = "SU Stopped", text_color = C.RED } end)
     end
 end
 

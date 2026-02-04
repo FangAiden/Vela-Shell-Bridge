@@ -42,11 +42,30 @@ function M.write_file(path, data)
     local tmp = path .. ".tmp"
     local f = io.open(tmp, "w")
     if not f then return false end
-    f:write(data)
+    local ok_write = f:write(data)
+    -- Note: f:flush() is implicit before close, but we call it explicitly for safety
+    pcall(function() f:flush() end)
     f:close()
 
-    os.remove(path)
-    os.rename(tmp, path)
+    if not ok_write then
+        pcall(function() os.remove(tmp) end)
+        return false
+    end
+
+    -- Atomic rename: on POSIX systems, rename() is atomic
+    -- On NuttX/FAT, it's not perfectly atomic, but safer than remove+rename
+    -- We use rename directly (it will overwrite existing file on POSIX)
+    local ok_rename = os.rename(tmp, path)
+    if not ok_rename then
+        -- Fallback: remove target first, then rename (less safe but necessary on some systems)
+        os.remove(path)
+        ok_rename = os.rename(tmp, path)
+        if not ok_rename then
+            pcall(function() os.remove(tmp) end)
+            return false
+        end
+    end
+
     return true
 end
 

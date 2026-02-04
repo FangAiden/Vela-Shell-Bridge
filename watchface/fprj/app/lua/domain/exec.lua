@@ -17,6 +17,10 @@ local M = {}
 
 local JOB_DIR = config.TMP_DIR .. "/su_jobs"
 local CWD_MAP = {}  -- Per-app working directory
+local JOB_REGISTRY = {}  -- Track active jobs for GC: { [job_id] = { created_at, app_id } }
+local JOB_MAX_AGE_SEC = 3600  -- GC jobs older than 1 hour
+local LAST_GC_TIME = 0
+local GC_INTERVAL_SEC = 300  -- Run GC every 5 minutes
 
 local log = ulog.create("exec")
 
@@ -147,6 +151,45 @@ local function cleanup(paths)
 end
 
 ----------------------------------------------------------------------
+-- Job GC: Clean up stale jobs that were never polled to completion
+----------------------------------------------------------------------
+
+local function gc_stale_jobs()
+    local now = os.time()
+    if now - LAST_GC_TIME < GC_INTERVAL_SEC then return end
+    LAST_GC_TIME = now
+
+    -- Clean up old entries from JOB_REGISTRY
+    local stale_ids = {}
+    for job_id, info in pairs(JOB_REGISTRY) do
+        if now - (info.created_at or 0) > JOB_MAX_AGE_SEC then
+            stale_ids[#stale_ids + 1] = job_id
+        end
+    end
+
+    for _, job_id in ipairs(stale_ids) do
+        local paths = job_paths(job_id)
+        log("GC: cleaning stale job " .. job_id)
+        cleanup(paths)
+        JOB_REGISTRY[job_id] = nil
+    end
+end
+
+-- Clean up CWD_MAP for apps no longer in allowlist
+function M.gc_cwd_map(valid_app_ids)
+    if type(valid_app_ids) ~= "table" then return end
+    local valid_set = {}
+    for _, id in ipairs(valid_app_ids) do
+        valid_set[id] = true
+    end
+    for app_id, _ in pairs(CWD_MAP) do
+        if not valid_set[app_id] then
+            CWD_MAP[app_id] = nil
+        end
+    end
+end
+
+----------------------------------------------------------------------
 -- Start Job
 ----------------------------------------------------------------------
 
@@ -156,12 +199,16 @@ function M.start_job(shell_cmd, is_sync, app_id)
     end
 
     ensure_job_dir()
+    gc_stale_jobs()  -- Periodic cleanup of stale jobs
 
     local job_id = gen_job_id()
     local paths = job_paths(job_id)
     local cwd = M.get_cwd(app_id)
 
     log("start_job: id=" .. job_id .. " mode=" .. (is_sync and "SYNC" or "ASYNC"))
+
+    -- Register job for GC tracking
+    JOB_REGISTRY[job_id] = { created_at = os.time(), app_id = app_id }
 
     -- Write owner file
     if app_id and app_id ~= "" then
@@ -196,10 +243,13 @@ function M.start_job(shell_cmd, is_sync, app_id)
     -- B) Async: spawn background wrapper script
     -- Use sh -c "cmd" for both streaming output and correct exit code capture
     -- Use /proc/self/status to get real PID (Group field) for kill support
+    -- Note: The PID captured is the wrapper shell's PID, which is needed for kill
+    -- We also capture the child sh -c PID for more accurate process tracking
 
     -- Escape single quotes in command for sh -c '...'
     local escaped_cmd = shell_cmd:gsub("'", "'\\''")
 
+    -- Wrapper script captures both its own PID and the child process PID
     local wrapper_content = table.concat({
         "cat /proc/self/status > " .. paths.pid,
         "cd " .. str.sh_quote(cwd),
@@ -213,6 +263,7 @@ function M.start_job(shell_cmd, is_sync, app_id)
 
     if not fs.write_file(paths.wrapper, wrapper_content .. "\n") then
         cleanup(paths)
+        JOB_REGISTRY[job_id] = nil
         return { ok = false, message = "failed to write wrapper file" }
     end
 
@@ -222,6 +273,7 @@ function M.start_job(shell_cmd, is_sync, app_id)
     local spawn_ec = normalize_exit_code(ok_spawn, why_spawn, code_spawn)
     if spawn_ec ~= 0 then
         cleanup(paths)
+        JOB_REGISTRY[job_id] = nil
         return { ok = false, message = "failed to spawn background process", exit_code = spawn_ec }
     end
 
@@ -292,6 +344,7 @@ function M.poll_job(job_id, app_id)
     -- 2) Done
     local exit_code = tonumber((status_content or ""):match("(%-?%d+)")) or -1
     cleanup(paths)
+    JOB_REGISTRY[job_id] = nil  -- Remove from GC registry
 
     return {
         ok = true, async = true, job_id = job_id, state = "done",

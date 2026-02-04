@@ -35,7 +35,7 @@ local function file_size(path)
 end
 
 local function init_exec_bytes()
-    if exec_bytes ~= nil then return end
+    -- Always recalculate from actual file size to ensure accuracy after restarts
     exec_bytes = file_size(EXEC_NDJSON_FILE)
 end
 
@@ -43,8 +43,17 @@ local function rotate_exec_logs_if_needed(extra_bytes)
     init_exec_bytes()
     extra_bytes = tonumber(extra_bytes) or 0
     if exec_bytes + extra_bytes <= EXEC_LOG_MAX_BYTES then return end
-    pcall(function() fs.remove_file(EXEC_NDJSON_BAK) end)
-    pcall(function() os.rename(EXEC_NDJSON_FILE, EXEC_NDJSON_BAK) end)
+
+    -- Safer rotation: rename current to .bak (overwrites existing .bak atomically)
+    -- This avoids the gap where both files could be lost
+    local ok_rename = os.rename(EXEC_NDJSON_FILE, EXEC_NDJSON_BAK)
+    if not ok_rename then
+        -- If rename fails, try remove first then rename
+        pcall(function() fs.remove_file(EXEC_NDJSON_BAK) end)
+        pcall(function() os.rename(EXEC_NDJSON_FILE, EXEC_NDJSON_BAK) end)
+    end
+
+    -- Create empty new file
     fs.write_file(EXEC_NDJSON_FILE, "")
     exec_bytes = 0
 end

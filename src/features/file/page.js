@@ -32,6 +32,25 @@ function formatSize(bytes) {
   return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+/**
+ * Check if a path is a protected system path that should not be deleted.
+ */
+function isProtectedPath(path) {
+  const normalized = normalizePath(path);
+  const protectedPaths = [
+    "/",
+    "/data",
+    "/data/quickapp",
+    "/data/files",
+    "/system",
+    "/etc",
+    "/proc",
+    "/tmp",
+    "/resource",
+  ];
+  return protectedPaths.includes(normalized);
+}
+
 function parseLsOutput(raw, basePath) {
   const lines = String(raw == null ? "" : raw)
     .split(/\r?\n/)
@@ -393,6 +412,18 @@ export default createPage({
   confirmDelete() {
     const entry = this.menuTargetEntry;
     if (!entry) return;
+
+    // Protect critical system paths from accidental deletion
+    if (isProtectedPath(entry.fullPath)) {
+      prompt.showToast({ message: "无法删除系统关键路径", duration: 1200 });
+      this.confirmAnim = "modal-leave";
+      setTimeout(() => {
+        this.showConfirm = false;
+      }, 180);
+      this.closeMenu();
+      return;
+    }
+
     const cmd = `rm -rf ${shellEscape(entry.fullPath)}`;
     this.runShell(cmd, `已删除：${entry.title}`).then((ok) => {
       if (ok) this.refreshList(this.currentPath);
