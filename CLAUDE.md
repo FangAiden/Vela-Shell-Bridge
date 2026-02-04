@@ -146,7 +146,7 @@ fi
 
 ### 远程控制 RPC (interconnect/index.js)
 
-手机通过 interconnect (WebSocket) 远程操控手表：
+手机通过 interconnect 远程操控手表：
 - 6 位 token 认证
 - 方法: `hello`, `shell.exec`, `fs.read`, `fs.write`, `fs.stat`, `shell.getCwd`, `shell.setCwd`
 - 响应超过 12KB 截断
