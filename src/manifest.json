@@ -90,9 +90,6 @@
       },
       "pages/saver": {
         "component": "saver"
-      },
-      "pages/test": {           
-        "component": "test"
       }
     }
   }

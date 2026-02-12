@@ -238,10 +238,11 @@ export async function updateLocalSettings(patch) {
   const current = await getLocalSettings();
   const next = applyPatch(current, patch);
   const ok = await storageSetRaw(STORAGE_KEY, JSON.stringify(next));
-  if (ok) {
-    cache = next;
-    syncGlobal(cache);
+  if (!ok) {
+    throw new Error("persist local settings failed");
   }
+  cache = next;
+  syncGlobal(cache);
   return next;
 }
 

@@ -12,7 +12,7 @@
           <div style="position: absolute;top:38px;left:78px;width:324px;height:52px;background-color:rgb(38,38,38);border-radius: 12px;border: 3px solid #333333" show="{{downFlag===''&& !numFlag}}"></div>
           <img show="{{resultList.length > 0}}" style="position: absolute;top:43px;left:355px;" src="./assets/full/down.png" @click="onBtnClick('down')" />
           <!-- 带变量的相对路径在 aiot-tookit 2.0.4 中修复 -->
-          <img src="./assets/full/{{lang}}.png" style="position: absolute;top:38px;left:7px;width:67px;height:52px;" @click="onBtnClick('lang')" show="{{downFlag==='' && !numFlag}}" />
+          <img src="/ui/components/InputMethod/assets/full/{{lang}}.png" style="position: absolute;top:38px;left:7px;width:67px;height:52px;" @click="onBtnClick('lang')" show="{{downFlag==='' && !numFlag}}" />
           <div style="position: absolute;top:-4px;left:78px;width:324px;" show="{{downFlag==='' && !numFlag && cval}}">
             <text class="caltext" style="width:296px;"> {{cval}}_ </text>
           </div>
@@ -77,7 +77,7 @@
           <div style="position: absolute;top:35px;left:95px;width:290px;height:60px;background-color:rgb(38,38,38);border-radius: 999px;border: 3px solid #333333" show="{{downFlag===''&& !numFlag}}"></div>
           <img show="{{resultList.length > 0}}" style="position: absolute;top:44px;left:338px;" src="./assets/full/down.png" @click="onBtnClick('down')" />
           <!-- 带变量的相对路径在 aiot-tookit 2.0.4 中修复 -->
-          <img src="./assets/t9/{{lang}}.png" style="position: absolute;top:35px;left:31px;width: 60px;height: 60px;" @click="onBtnClick('lang')" show="{{downFlag==='' && !numFlag}}" />
+          <img src="/ui/components/InputMethod/assets/t9/{{lang}}.png" style="position: absolute;top:35px;left:31px;width: 60px;height: 60px;" @click="onBtnClick('lang')" show="{{downFlag==='' && !numFlag}}" />
           <div style="position: absolute;top:-4px;left:95px;width:145px;height:40px;" show="{{downFlag==='' && !numFlag && cval}}">
             <text class="caltext" style="width:145px;"> {{cval}}_ </text>
           </div>
@@ -259,7 +259,7 @@
           </scroll>
           <img show="{{resultList.length > 0}}" style="position: absolute;left: 120px;top: 57px;width: 60px;height: 40px;" src="./assets/arc/down2.png" @click="onBtnClick('down')" />
           <!-- 带变量的相对路径在 aiot-tookit 2.0.4 中修复 -->
-          <img src="./assets/arc/{{lang}}.png" style="position: absolute;top:0px;left:9px;width: 48px;height: 42px;" @click="onBtnClick('lang')" show="{{downFlag==='' && !numFlag}}" />
+          <img src="/ui/components/InputMethod/assets/arc/{{lang}}.png" style="position: absolute;top:0px;left:9px;width: 48px;height: 42px;" @click="onBtnClick('lang')" show="{{downFlag==='' && !numFlag}}" />
           <img src="./assets/arc/back2.png" style="position: absolute;top:0px;left:9px;width: 48px;height: 42px;" @click="onBtnClick('switchCn')" show="{{numFlag && lang==='cn'}}" />
           <img src="./assets/arc/123.png" style="position: absolute;left: 70px;top: 0px;width: 52px;height: 42px;" @click="onBtnClick('switchNum')" show="{{downFlag==='' && !numFlag && lang==='cn'}}" />
           <img src="./assets/arc/bigA.png" style="position: absolute;top:0px;left:72px;width:48px;height:42px;" @click="onBtnClick('switchLow')" show="{{downFlag==='' && upperFlag && lang==='en'}}" />
@@ -572,10 +572,10 @@ export default {
     this.clearWaiting();
     this.resetReslutList();
   },
-  watchHidePropsChange(newV, oldV) {
+  watchHidePropsChange(newV) {
     this.$emit("visibilityChange", { visible: newV });
   },
-  watchMaxLengthPropsChange(newV, oldV) {
+  watchMaxLengthPropsChange(newV) {
     if (newV) {
       const tempCvalList = [];
       for (let i = 0; i < newV; i++) {
