@@ -121,7 +121,7 @@ function findEntry(list, index, title) {
 
 export default createPage({
   data: {
-    currentPath: "/data/quickapp",
+    currentPath: "/",
     fileList: [],
     clipboard: null,
     clipboardMode: "",
