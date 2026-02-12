@@ -1,4 +1,4 @@
-<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
 
 <template>
   <div class="root">
@@ -97,7 +97,7 @@
 </template>
 
 <script>
-import page from "../../features/log/page.js";
+import page from "../../../features/log/page.js";
 
 export default page;
 </script>

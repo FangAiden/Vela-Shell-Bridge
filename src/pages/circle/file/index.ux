@@ -1,6 +1,6 @@
-<import name="time-bar" src="../../ui/components/timeBar"></import>
-<import name="item" src="../../features/file/ui/item-circle"></import>
-<import name="ime" src="../../ui/components/InputMethod/InputMethod.ux"></import>
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
+<import name="item" src="../../../features/file/ui/item-circle"></import>
+<import name="ime" src="../../../ui/components/InputMethod/InputMethod.ux"></import>
 
 <template>
   <div class="root">
@@ -196,7 +196,7 @@
 </template>
 
 <script>
-import page from "../../features/file/page.js";
+import page from "../../../features/file/page.js";
 
 export default page;
 </script>

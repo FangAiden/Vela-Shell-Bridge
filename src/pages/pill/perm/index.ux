@@ -1,5 +1,5 @@
-<import name="time-bar" src="../../ui/components/timeBar"></import>
-<import name="item" src="../../features/perm/ui/item-pill"></import>
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
+<import name="item" src="../../../features/perm/ui/item-pill"></import>
 
 <template>
 	<div class="root">
@@ -31,7 +31,7 @@
 </template>
 
 <script>
-import page from "../../features/perm/page.js";
+import page from "../../../features/perm/page.js";
 
 export default page;
 </script>

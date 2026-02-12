@@ -1,4 +1,4 @@
-<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
 
 <template>
   <div class="root">
@@ -282,7 +282,7 @@
 </template>
 
 <script>
-import page from "../../features/about/page.js";
+import page from "../../../features/about/page.js";
 
 export default page;
 </script>
