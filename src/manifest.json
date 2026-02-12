@@ -58,6 +58,9 @@
   "permissions": [
     {
       "name": "hapjs.permission.LOCATION"
+    },
+    {
+      "name": "hapjs.permission.DEVICE_INFO"
     }
   ],
   "config": {
