@@ -33,6 +33,6 @@ CONFIG.APPS_JSON = { "/data/apps.json", "/data/quickapp/apps.json" }
 CONFIG.APP_INSTALL_BASE = { "/data/quickapp/app", "/data/app", "/data/app/quickapp" }
 
 -- Admin AppID (permission manager)
-CONFIG.ADMIN_APP_ID = "com.super.su.aigik"
+CONFIG.ADMIN_APP_ID = "com.vela.su.aigik"
 
 return CONFIG
