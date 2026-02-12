@@ -27,7 +27,7 @@ const DEFAULTS = {
   ime: {
     keyboardType: "QWERTY",
     vibrateMode: "short",
-    screenType: "circle",
+    screenType: "auto",
     maxLength: 5,
   },
 };
@@ -77,7 +77,7 @@ function normalize(raw) {
     const ml = raw.ime.maxLength;
     if (kt === "QWERTY" || kt === "T9") out.ime.keyboardType = kt;
     if (vm === "" || vm === "short" || vm === "long") out.ime.vibrateMode = vm;
-    if (st === "circle" || st === "rect" || st === "pill-shaped") out.ime.screenType = st;
+    if (st === "auto" || st === "circle" || st === "rect" || st === "pill-shaped") out.ime.screenType = st;
     if (ml != null) out.ime.maxLength = clampInt(ml, 1, 9, out.ime.maxLength);
   }
   if (out.ime.screenType === "pill-shaped" && out.ime.keyboardType === "T9") {
@@ -220,7 +220,7 @@ function applyPatch(current, patch) {
     if (patch.ime.vibrateMode === "" || patch.ime.vibrateMode === "short" || patch.ime.vibrateMode === "long") {
       next.ime.vibrateMode = patch.ime.vibrateMode;
     }
-    if (patch.ime.screenType === "circle" || patch.ime.screenType === "rect" || patch.ime.screenType === "pill-shaped") {
+    if (patch.ime.screenType === "auto" || patch.ime.screenType === "circle" || patch.ime.screenType === "rect" || patch.ime.screenType === "pill-shaped") {
       next.ime.screenType = patch.ime.screenType;
     }
     if (patch.ime.maxLength != null) {

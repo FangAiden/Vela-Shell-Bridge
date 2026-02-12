@@ -1,7 +1,10 @@
-import router from "@system.router";
+﻿import router from "@system.router";
 import prompt from "@system.prompt";
+import device from "@system.device";
 import suExec from "../../services/su-daemon/index.js";
 import { createPage } from "../../app/page.js";
+import { detectScreenProfile, getBucketDefaults } from "../../shared/ui/screen-profile.js";
+import { getScaleByBucket } from "../../shared/ui/layout-scale.js";
 
 export default createPage({
   data: {
@@ -12,7 +15,7 @@ export default createPage({
       { id: "orange", src: "/resources/image/glow/orange.png" },
       { id: "cyan", src: "/resources/image/glow/cyan.png" },
       { id: "purple", src: "/resources/image/glow/purple.png" },
-      { id: "white", src: "/resources/image/glow/white.png" }
+      { id: "white", src: "/resources/image/glow/white.png" },
     ],
 
     cards: [
@@ -31,7 +34,7 @@ export default createPage({
       {
         id: "shell",
         title: "终端",
-        subtitle: "执行Shell命令",
+        subtitle: "执行 Shell 命令",
         image: "/resources/image/shell.png",
       },
       {
@@ -57,17 +60,23 @@ export default createPage({
         title: "息屏挂机",
         subtitle: "防止设备烧屏",
         image: "/resources/image/saver.png",
-      }
+      },
     ],
 
     pageWidth: 0,
     bgOpacity: [],
-    currentScrollX: 0,
+    currentScrollPos: 0,
+    screenShape: "circle",
+    screenBucket: "c480",
+    screenScale: 1,
+    pillBaseCardHeight: 380,
+    pillBaseGap: 40,
   },
 
   onInit() {
     this.bgOpacity = this.bgList.map((_, idx) => (idx === 0 ? 1 : 0));
-    this.currentScrollX = 0;
+    this.currentScrollPos = 0;
+    this.detectDeviceProfile();
   },
 
   onShow() {
@@ -77,25 +86,72 @@ export default createPage({
       success: ({ width }) => {
         if (this.cards.length > 0) {
           this.pageWidth = width / this.cards.length;
-          this.updateBgOpacityByScroll(this.currentScrollX);
+          this.updateBgOpacityByScroll(this.currentScrollPos);
         }
       },
     });
   },
 
-  onScroll(e) {
-    try {
-      const x = (e && e.scrollX != null) ? e.scrollX : 0;
-      const n = (typeof x === "number") ? x : parseFloat(String(x || "0"));
-      this.currentScrollX = isFinite(n) ? n : 0;
-    } catch (_) {
-      this.currentScrollX = 0;
-    }
-    this.updateBgOpacityByScroll(this.currentScrollX);
+  detectDeviceProfile() {
+    device.getInfo({
+      success: (ret) => {
+        const profile = detectScreenProfile(ret);
+        this.applyScreenProfile(profile);
+      },
+      fail: () => {
+        this.applyScreenProfile({
+          shape: "circle",
+          bucketKey: getBucketDefaults("circle"),
+          width: 0,
+          height: 0,
+        });
+      },
+    });
   },
 
-  updateBgOpacityByScroll(scrollX) {
-    if (!this.pageWidth || this.pageWidth <= 0) {
+  applyScreenProfile(profile) {
+    const p = profile && typeof profile === "object" ? profile : {};
+    const shape = p.shape || "circle";
+    const bucket = p.bucketKey || getBucketDefaults(shape);
+    this.screenShape = shape;
+    this.screenBucket = bucket;
+    this.screenScale = getScaleByBucket(bucket);
+  },
+
+  getPillPageStep() {
+    const cardHeight = Math.max(300, Math.round(this.pillBaseCardHeight * this.screenScale));
+    const gap = Math.max(24, Math.round(this.pillBaseGap * this.screenScale));
+    return cardHeight + gap;
+  },
+
+  onScroll(e) {
+    try {
+      let scrollPos = 0;
+      if (this.screenShape === "pill-shaped") {
+        let y = 0;
+        if (e) {
+          if (e.scrollY !== undefined) y = e.scrollY;
+          else if (e.scrollTop !== undefined) y = e.scrollTop;
+          else if (e.contentOffset && e.contentOffset.y !== undefined) y = -e.contentOffset.y;
+        }
+        const n = typeof y === "number" ? y : parseFloat(String(y || "0"));
+        scrollPos = isFinite(n) ? n : 0;
+      } else {
+        const x = e && e.scrollX != null ? e.scrollX : 0;
+        const n = typeof x === "number" ? x : parseFloat(String(x || "0"));
+        scrollPos = isFinite(n) ? n : 0;
+      }
+      this.currentScrollPos = scrollPos;
+    } catch (_) {
+      this.currentScrollPos = 0;
+    }
+    this.updateBgOpacityByScroll(this.currentScrollPos);
+  },
+
+  updateBgOpacityByScroll(scrollPos) {
+    const pageSize = this.screenShape === "pill-shaped" ? this.getPillPageStep() : this.pageWidth;
+
+    if (!pageSize || pageSize <= 0) {
       this.bgOpacity = this.bgList.map((_, idx) => (idx === 0 ? 1 : 0));
       return;
     }
@@ -103,12 +159,12 @@ export default createPage({
     const pageCount = this.cards.length;
     if (pageCount === 0) return;
 
-    let index = Math.floor(scrollX / this.pageWidth);
+    let index = Math.floor(scrollPos / pageSize);
     if (index < 0) index = 0;
     if (index >= pageCount) index = pageCount - 1;
 
-    const localX = scrollX - index * this.pageWidth;
-    let p = localX / this.pageWidth;
+    const localPos = scrollPos - index * pageSize;
+    let p = localPos / pageSize;
     if (p < 0) p = 0;
     if (p > 1) p = 1;
 
@@ -134,22 +190,44 @@ export default createPage({
   onClickCard(id) {
     if (this.isLeaving) return;
 
+    const targetMapByShape = {
+      rect: {
+        perm: "pages/perm-rect",
+        file: "pages/file-rect",
+        shell: "pages/shell-rect",
+        setting: "pages/setting-rect",
+        log: "pages/log-rect",
+        about: "pages/about-rect",
+        saver: "pages/saver-rect",
+      },
+      circle: {
+        perm: "pages/perm-circle",
+        file: "pages/file-circle",
+        shell: "pages/shell-circle",
+        setting: "pages/setting-circle",
+        log: "pages/log-circle",
+        about: "pages/about-circle",
+        saver: "pages/saver-circle",
+      },
+      "pill-shaped": {
+        perm: "pages/perm-pill",
+        file: "pages/file-pill",
+        shell: "pages/shell-pill",
+        setting: "pages/setting-pill",
+        log: "pages/log-pill",
+        about: "pages/about-pill",
+        saver: "pages/saver-pill",
+      },
+    };
+
+    const targetMap = targetMapByShape[this.screenShape] || targetMapByShape.circle;
+    const target = targetMap[id] || "";
+
     if (!this.transitionsEnabled) {
       this.isLeaving = true;
-      let target = "";
-      switch (id) {
-        case "perm":
-        case "file":
-        case "shell":
-        case "setting":
-        case "log":
-        case "about":
-        case "saver":
-          target = "pages/" + id;
-          break;
-        default:
-          this.isLeaving = false;
-          return;
+      if (!target) {
+        this.isLeaving = false;
+        return;
       }
       router.push({ uri: target, params: {} });
       return;
@@ -157,22 +235,10 @@ export default createPage({
 
     this.isLeaving = true;
     this.animClass = "page-leave";
-
-    let target = "";
-    switch (id) {
-      case "perm":
-      case "file":
-      case "shell":
-      case "setting":
-      case "log":
-      case "about":
-      case "saver":
-        target = "pages/" + id;
-        break;
-      default:
-        this.isLeaving = false;
-        this.animClass = "";
-        return;
+    if (!target) {
+      this.isLeaving = false;
+      this.animClass = "";
+      return;
     }
 
     setTimeout(() => {
@@ -196,4 +262,3 @@ export default createPage({
     }
   },
 }, { isHome: true });
-

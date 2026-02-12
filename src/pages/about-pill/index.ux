@@ -3,7 +3,7 @@
 <template>
   <div class="root">
     <!-- 顶部时间条：不参与动画 -->
-    <time-bar />
+    <time-bar mode="pill-shaped" />
 
     <!-- 动画主体：整块内容区域 -->
     <div class="safe-area page-anim {{ animClass }}">
@@ -310,7 +310,7 @@ export default page;
 
 /* 只在左右方向做安全区限制，垂直方向用满 */
 .info-scroll {
-  width: 88%;          /* 比原来的 82% 稍微宽一点，提高利用率 */
+  width: 94%;
   flex: 1;
   flex-direction: column;
   align-items: center;
@@ -319,7 +319,7 @@ export default page;
 
 /* —— 顶部设备卡片 —— */
 .device-card {
-  width: 75%;
+  width: 92%;
   border-radius: 22px;
   background-color: #151515;
   padding: 16px 10px 14px;
@@ -357,13 +357,13 @@ export default page;
 
 .device-name {
   color: #f5f5f5;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: bold;
 }
 
 .device-model {
   color: #999999;
-  font-size: 13px;
+  font-size: 10px;
   margin-top: 3px;
 }
 
@@ -374,7 +374,7 @@ export default page;
   border-width: 1px;
   border-color: #00d36f;
   color: #00d36f;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 /* —— 操作按钮 —— */
@@ -389,8 +389,8 @@ export default page;
 
 .action-btn {
   width: 100%;
-  height: 44px;
-  border-radius: 14px;
+  height: 34px;
+  border-radius: 12px;
   background-color: #232323;
   flex-direction: row;
   justify-content: center;
@@ -407,7 +407,7 @@ export default page;
 
 .action-text {
   color: #ffffff;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   flex: 1;
   width: 100%;
@@ -420,7 +420,7 @@ export default page;
 .section-header {
   width: 100%;
   color: #cccccc;
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 600;
   margin-top: 4px;
   margin-bottom: 6px;
@@ -458,7 +458,7 @@ export default page;
 .row-label {
   width: 100%;
   color: #f5f5f5;
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -466,13 +466,13 @@ export default page;
 .row-value {
   width: 100%;
   color: #7cff7c;
-  font-size: 15px;
+  font-size: 12px;
   margin-top: 2px;
 }
 
 /* 设备 ID 等长串小一点 */
 .row-value.small {
-  font-size: 14px;
+  font-size: 11px;
 }
 
 /* —— 指标条（存储/电量/内存/磁盘） —— */
@@ -531,15 +531,15 @@ export default page;
 /* —— 系统服务 tile —— */
 .tile-grid {
   width: 100%;
-  flex-direction: row;
-  justify-content: space-between;
+  flex-direction: column;
+  justify-content: flex-start;
   align-items: stretch;
   margin-top: 4px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .tile {
-  width: 48%;
+  width: 100%;
   border-radius: 14px;
   background-color: #0f0f0f;
   padding: 10px 10px 8px;
@@ -548,23 +548,24 @@ export default page;
   align-items: flex-start;
   border-width: 1px;
   border-color: #242424;
+  margin-bottom: 8px;
 }
 
 .tile-title {
   color: #f5f5f5;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
 }
 
 .tile-main {
   color: #7cff7c;
-  font-size: 16px;
+  font-size: 12px;
   margin-top: 6px;
 }
 
 .tile-sub {
   color: #7a7a7a;
-  font-size: 11px;
+  font-size: 10px;
   margin-top: 2px;
 }
 
@@ -650,9 +651,9 @@ export default page;
 }
 
 .detail-modal {
-  width: 80%;
-  height: 54%;
-  border-radius: 20px;
+  width: 88%;
+  height: 64%;
+  border-radius: 14px;
   background-color: rgba(25, 25, 25, 0.98);
   flex-direction: column;
   align-items: stretch;
@@ -662,7 +663,7 @@ export default page;
   text-align: center;
   padding-top: 14px;
   padding-bottom: 10px;
-  font-size: 16px;
+  font-size: 13px;
   color: #ffffff;
   lines: 1;
   text-overflow: ellipsis;
@@ -683,20 +684,20 @@ export default page;
 
 .detail-content {
   color: #7cff7c;
-  font-size: 12px;
+  font-size: 11px;
   text-align: left;
   width: 100%;
   lines: 200;
 }
 
 .detail-close {
-  height: 44px;
+  height: 34px;
   justify-content: center;
   align-items: center;
 }
 
 .detail-close-text {
-  font-size: 16px;
+  font-size: 12px;
   color: #f1f1f1;
 }
 
@@ -740,7 +741,7 @@ export default page;
 
 /* 底部空白，防止最后一块贴到圆边 */
 .blank {
-  height: 140px;
+  height: 100px;
 }
 
 /* —— 页面动画 —— */
@@ -800,3 +801,5 @@ export default page;
 .lines-2 { lines: 2; }
 .lines-3 { lines: 3; }
 </style>
+
+

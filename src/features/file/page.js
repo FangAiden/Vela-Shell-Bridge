@@ -134,7 +134,7 @@ export default createPage({
     imeTarget: null,
     imeKeyboardType: "QWERTY",
     imeVibrateMode: "short",
-    imeScreenType: "circle",
+    imeScreenType: "auto",
     imeMaxLength: 5,
 
     sticky: false,
@@ -475,7 +475,7 @@ export default createPage({
         const ime = local && local.ime ? local.ime : {};
         this.imeKeyboardType = ime.keyboardType || "QWERTY";
         this.imeVibrateMode = ime.vibrateMode != null ? ime.vibrateMode : "short";
-        this.imeScreenType = ime.screenType || "circle";
+        this.imeScreenType = ime.screenType || "auto";
         this.imeMaxLength = ime.maxLength != null ? ime.maxLength : 5;
       },
     };

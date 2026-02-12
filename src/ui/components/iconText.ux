@@ -1,45 +1,106 @@
 <template>
-	<div class="root">
-		<image class="image" src="{{ image }}" />
-		<text class="title">{{ title }}</text>
-		<text class="subtitle">{{ subtitle }}</text>
-	</div>
+  <div class="root">
+    <image class="image" src="{{ image }}" style="width: {{ imageSize }}px; height: {{ imageSize }}px; margin-bottom: {{ imageGap }}px;" />
+    <text class="title" style="font-size: {{ titleSize }}px; margin-bottom: {{ titleGap }}px;">{{ title }}</text>
+    <text class="subtitle" style="font-size: {{ subtitleSize }}px;">{{ subtitle }}</text>
+  </div>
 </template>
 <script>
+import { getScaleByBucket } from "../../shared/ui/layout-scale.js";
+
 export default {
-	props: ["title", "image", "subtitle"],
-	data() {
-		return {
-			title: this.title,
-			image: this.image,
-			subtitle: this.subtitle,
-		};
-	},
+  props: {
+    title: {
+      default: "",
+    },
+    image: {
+      default: "",
+    },
+    subtitle: {
+      default: "",
+    },
+    mode: {
+      default: "circle",
+    },
+    bucket: {
+      default: "",
+    },
+  },
+  data() {
+    return {
+      imageSize: 90,
+      imageGap: 10,
+      titleSize: 46,
+      titleGap: 10,
+      subtitleSize: 28,
+    };
+  },
+  onInit() {
+    this.applyLayout();
+    this.$watch("mode", "applyLayout");
+    this.$watch("bucket", "applyLayout");
+  },
+  normalizeMode(v) {
+    const m = String(v == null ? "" : v).toLowerCase();
+    if (m === "pill-shaped" || m === "pill" || m === "capsule") return "pill-shaped";
+    if (m === "rect" || m === "rectangle") return "rect";
+    if (m === "standard") return "circle";
+    return "circle";
+  },
+  defaultBucketByMode(mode) {
+    if (mode === "rect") return "r390";
+    if (mode === "pill-shaped") return "p212";
+    return "c480";
+  },
+  applyLayout() {
+    const mode = this.normalizeMode(this.mode);
+    const bucket = this.bucket || this.defaultBucketByMode(mode);
+    const scale = getScaleByBucket(bucket);
+
+    let baseImage = 90;
+    let baseImageGap = 10;
+    let baseTitle = 46;
+    let baseTitleGap = 10;
+    let baseSubtitle = 28;
+
+    if (mode === "rect") {
+      baseImage = 96;
+      baseImageGap = 12;
+      baseTitle = 50;
+      baseTitleGap = 12;
+      baseSubtitle = 30;
+    } else if (mode === "pill-shaped") {
+      baseImage = 80;
+      baseImageGap = 8;
+      baseTitle = 36;
+      baseTitleGap = 8;
+      baseSubtitle = 20;
+    }
+
+    this.imageSize = Math.max(24, Math.round(baseImage * scale));
+    this.imageGap = Math.max(4, Math.round(baseImageGap * scale));
+    this.titleSize = Math.max(14, Math.round(baseTitle * scale));
+    this.titleGap = Math.max(4, Math.round(baseTitleGap * scale));
+    this.subtitleSize = Math.max(10, Math.round(baseSubtitle * scale));
+  },
 };
 </script>
 
 <style>
 .root {
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	width: 100%;
-	height: 100%;
-}
-
-.image {
-	margin-bottom: 10px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
 }
 
 .title {
-	font-size: 48px;
-	font-weight: bold;
-	color: #f1f1f1;
-	margin-bottom: 10px;
+  font-weight: bold;
+  color: #f1f1f1;
 }
 
 .subtitle {
-	font-size: 30px;
-	color: #929292;
+  color: #929292;
 }
 </style>

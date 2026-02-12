@@ -2,7 +2,7 @@
   <div class="page" style="flex-direction: column;" show="{{!hide}}">
     <div style="background-color:black" >
       <!-- 圆屏62 -->
-      <div if="{{screentype==='circle'}}" style="width: 480px;height: 321px;">
+      <div if="{{activeScreenType==='circle'}}" style="width: 480px;height: {{circleWrapHeight}}px;transform: scale({{keyboardScale}});transform-origin: top center;">
         <!-- 全键盘 -->
         <div if="{{keyboardtype!='T9'}}" style="width: 480px;height: 321px;">
           <img src="./assets/full/back2.png" style="position: absolute;top:38px;left:7px;width:466px;height:52px;" @click="onBtnClick('switchCn')" show="{{numFlag}}" />
@@ -136,7 +136,7 @@
         </div>
       </div>
       <!-- 方屏67 -->
-      <div if="{{screentype==='rect'}}" style="width: 100%;height: 255px;flex-direction: column">
+      <div if="{{activeScreenType==='rect'}}" style="width: 100%;height: 255px;flex-direction: column">
         <!-- 九键中文 -->
         <div if="{{keyboardtype=='T9' && !numFlag}}" style="position:absolute;top:-11px;width:100%;height:276px;justify-content: center;">
           <div style="top:77px;height:189px;width:100%;align-items: stretch;justify-content: space-between;flex-direction: column;padding:6px 3px">
@@ -220,7 +220,7 @@
         </div>
       </div>
       <!-- 胶囊屏66 -->
-      <div if="{{screentype==='pill-shaped'}}" style="width: 100%;height: 305px">
+      <div if="{{activeScreenType==='pill-shaped'}}" style="width: 100%;height: {{pillWrapHeight}}px;transform: scale({{keyboardScale}});transform-origin: top center;">
         <div static style="position:absolute;left:0px;top:34px;width:100%;height:276px;">
           <progress percent="{{30+percent66}}" type="arc" style="start-angle:204deg;total-angle:-48deg;width:188px;height:188px;top:82px;left:2px;position:absolute;color:#ffffff;stroke-width:6px;layer-color:#262626;margin-left: {{(screenWidth - 192)/2}}px;"></progress>
           <scroll id="keyboard66" scroll-x="{{true}}" onscroll="handelScroll" style="padding-left: {{(screenWidth - 192)/2}}px;padding-right: {{(screenWidth - 192)/2}}px;">
@@ -288,6 +288,8 @@
 import vibrator from "@system.vibrator";
 import device from '@system.device'
 import { SimpleInputMethod } from "./assets/dicUtil.js";
+import { detectScreenProfile, pickNearestBucket, getBucketDefaults } from "../../../shared/ui/screen-profile.js";
+import { getScaleByBucket } from "../../../shared/ui/layout-scale.js";
 function doSearchDic(word, cb) {
   let hanzi = SimpleInputMethod.getHanzi(word);
   if (hanzi && hanzi[0]) {
@@ -317,7 +319,7 @@ export default {
       default: "",
     },
     screentype: {
-      default: "circle",
+      default: "auto",
     },
   },
   data: {
@@ -334,6 +336,11 @@ export default {
     cvalList: [0, 1, 2, 3, 4],
     percent67: 52,
     percent66: 0,
+    activeScreenType: "circle",
+    activeBucket: "c480",
+    keyboardScale: 1,
+    circleWrapHeight: 321,
+    pillWrapHeight: 305,
     // 针对screenShape为rect的设备，会自动获取screenWidth并绑定到根div
     // 这样便能同时适配n67和o65甚至是后续设备，但实际效果可能受designWidth影响
     screenWidth: 336,
@@ -373,11 +380,81 @@ export default {
       }
       this.cvalList = tempCvalList;
     }
-    if (this.screentype === "rect" || this.screentype === "pill-shaped") {
-      this.adjustScreenWidth();
-    }
+    this.syncScreenTypeFromProps();
+    this.detectScreenType();
     this.$watch("hide", "watchHidePropsChange");
     this.$watch("maxlength", "watchMaxLengthPropsChange");
+    this.$watch("screentype", "watchScreenTypePropsChange");
+  },
+  normalizeScreenType(v) {
+    const s = String(v == null ? "" : v).toLowerCase();
+    if (s === "pill-shaped" || s === "pill" || s === "capsule") return "pill-shaped";
+    if (s === "rect" || s === "rectangle") return "rect";
+    if (s === "circle" || s === "round") return "circle";
+    if (s === "auto") return "auto";
+    return "circle";
+  },
+  defaultBucketByShape(shape) {
+    return getBucketDefaults(shape || "circle");
+  },
+  applyBucketLayout() {
+    const mode = this.activeScreenType;
+    const bucket = this.activeBucket || this.defaultBucketByShape(mode);
+    const scale = getScaleByBucket(bucket);
+    if (mode === "circle") {
+      this.keyboardScale = Math.min(1, Math.max(0.9, scale));
+      this.circleWrapHeight = Math.round(321 * this.keyboardScale);
+      this.pillWrapHeight = 305;
+      return;
+    }
+    if (mode === "pill-shaped") {
+      this.keyboardScale = Math.min(1, Math.max(0.88, scale));
+      this.pillWrapHeight = Math.round(305 * this.keyboardScale);
+      this.circleWrapHeight = 321;
+      return;
+    }
+    this.keyboardScale = 1;
+    this.circleWrapHeight = 321;
+    this.pillWrapHeight = 305;
+  },
+  applyScreenType(nextType) {
+    const normalized = this.normalizeScreenType(nextType);
+    if (normalized === "auto") return;
+    this.activeScreenType = normalized;
+    this.activeBucket = this.defaultBucketByShape(normalized);
+    this.applyBucketLayout();
+    if (normalized === "rect" || normalized === "pill-shaped") {
+      this.adjustScreenWidth();
+    }
+  },
+  syncScreenTypeFromProps() {
+    const normalized = this.normalizeScreenType(this.screentype);
+    if (normalized !== "auto") {
+      this.applyScreenType(normalized);
+    }
+  },
+  detectScreenType() {
+    device.getInfo({
+      success: (data) => {
+        const normalizedProp = this.normalizeScreenType(this.screentype);
+        const profile = detectScreenProfile(data);
+        const nextShape = normalizedProp === "auto" ? profile.shape : normalizedProp;
+        const nextBucket = pickNearestBucket(nextShape, profile.width, profile.height) || this.defaultBucketByShape(nextShape);
+        this.activeScreenType = nextShape;
+        this.activeBucket = nextBucket;
+        this.applyBucketLayout();
+        if (nextShape === "rect" || nextShape === "pill-shaped") {
+          this.adjustScreenWidth();
+        }
+      },
+      fail: () => {
+        const normalizedProp = this.normalizeScreenType(this.screentype);
+        const fallbackShape = normalizedProp === "auto" ? "circle" : normalizedProp;
+        this.activeScreenType = fallbackShape;
+        this.activeBucket = this.defaultBucketByShape(fallbackShape);
+        this.applyBucketLayout();
+      },
+    });
   },
   addAllTxt(txt) {
     this.$emit("complete", { content: txt });
@@ -499,7 +576,7 @@ export default {
     this.lastWaitingStr = "";
   },
   resetReslutList() {
-    if (this.screentype != "circle") {
+    if (this.activeScreenType != "circle") {
       this.$element("cvalWaiting").scrollTo({
         top: 0,
         left: 0,
@@ -540,7 +617,7 @@ export default {
   },
   onSelect(num) {
     this.$emit("keyDown", { content: num });
-    if (this.keyboardtype === "T9" && this.screentype !== "pill-shaped") {
+    if (this.keyboardtype === "T9" && this.activeScreenType !== "pill-shaped") {
       this.onBtnClick(num);
       return;
     }
@@ -583,6 +660,10 @@ export default {
       }
       this.cvalList = tempCvalList;
     }
+  },
+  watchScreenTypePropsChange() {
+    this.syncScreenTypeFromProps();
+    this.detectScreenType();
   },
   onVibrate() {
     if (this.vibratemode != "") {

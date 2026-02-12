@@ -1,9 +1,9 @@
-﻿<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="time-bar" src="../../ui/components/timeBar"></import>
 <import name="ime" src="../../ui/components/InputMethod/InputMethod.ux"></import>
 
 <template>
   <div class="root">
-    <time-bar />
+    <time-bar mode="circle" />
 
     <div class="safe-area page-anim {{ animClass }}">
       <scroll class="list" scroll-y="true" bounces="true">
@@ -910,4 +910,5 @@ export default page;
   100% { opacity: 0; transform: scale(0.92); }
 }
 </style>
+
 

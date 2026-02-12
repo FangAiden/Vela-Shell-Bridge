@@ -1,0 +1,914 @@
+<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="ime" src="../../ui/components/InputMethod/InputMethod.ux"></import>
+
+<template>
+  <div class="root">
+    <time-bar mode="rect" />
+
+    <div class="safe-area page-anim {{ animClass }}">
+      <scroll class="list" scroll-y="true" bounces="true">
+
+        <div class="header">
+          <image class="header-icon" src="/resources/image/setting.png"></image>
+          <text class="header-title lines-1">设置</text>
+          <text class="header-sub lines-1">应用与守护进程配置</text>
+        </div>
+
+        <div class="section">
+          <text class="section-title">执行与日志</text>
+
+          <div class="card" onclick="onToggleExecMode">
+            <div class="card-texts">
+              <text class="card-title lines-1">终端执行模式</text>
+              <text class="card-sub lines-2">{{ execModeSub }}</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ execModeLabel }}</text>
+            </div>
+          </div>
+
+          <div class="card" onclick="onToggleSaveHistory">
+            <div class="card-texts">
+              <text class="card-title lines-1">记录历史命令</text>
+              <text class="card-sub lines-2">保存到日志页（可能占用空间）</text>
+            </div>
+            <div class="switch {{ saveHistory ? 'switch-on' : 'switch-off' }}">
+              <div class="switch-knob"></div>
+            </div>
+          </div>
+
+          <div class="card" onclick="openBlacklist">
+            <div class="card-texts">
+              <text class="card-title lines-1">黑名单命令</text>
+              <text class="card-sub lines-2">{{ blacklistSummary }}</text>
+            </div>
+            <image class="arrow" src="/resources/image/right_arrow.png"></image>
+          </div>
+        </div>
+
+        <div class="section">
+          <text class="section-title">性能</text>
+
+          <div class="card">
+            <div class="card-texts">
+              <text class="card-title lines-1">Daemon 轮询频率</text>
+              <text class="card-sub lines-2">IPC 扫描间隔（ms）</text>
+            </div>
+            <div class="stepper">
+              <div class="step-btn" onclick="decDaemonPoll">
+                <text class="step-btn-text">-</text>
+              </div>
+              <text class="step-value lines-1">{{ daemonPollMs }}ms</text>
+              <div class="step-btn" onclick="incDaemonPoll">
+                <text class="step-btn-text">+</text>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <text class="section-title">界面</text>
+
+          <div class="card" onclick="onToggleTransitions">
+            <div class="card-texts">
+              <text class="card-title lines-1">页面过渡动画</text>
+              <text class="card-sub lines-2">进入/退出页面的缩放淡入动画</text>
+            </div>
+            <div class="switch {{ transitionsEnabled ? 'switch-on' : 'switch-off' }}">
+              <div class="switch-knob"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <text class="section-title">手机互联</text>
+
+          <div class="card" onclick="onToggleRemote">
+            <div class="card-texts">
+              <text class="card-title lines-1">Interconnect 远程控制</text>
+              <text class="card-sub lines-2">{{ remoteSummary }}</text>
+            </div>
+            <div class="switch {{ remoteEnabled ? 'switch-on' : 'switch-off' }}">
+              <div class="switch-knob"></div>
+            </div>
+          </div>
+
+          <div class="card" onclick="regenRemoteToken" if="{{ remoteEnabled }}">
+            <div class="card-texts">
+              <text class="card-title lines-1">配对码</text>
+              <text class="card-sub lines-2">{{ remoteToken || '点击生成/刷新' }}</text>
+            </div>
+            <image class="arrow" src="/resources/image/right_arrow.png"></image>
+          </div>
+
+          <div class="card" onclick="refreshRemoteStatus">
+            <div class="card-texts">
+              <text class="card-title lines-1">连接状态</text>
+              <text class="card-sub lines-2">{{ remoteStatusText }}</text>
+            </div>
+            <image class="arrow" src="/resources/image/right_arrow.png"></image>
+          </div>
+        </div>
+
+        <div class="section">
+          <text class="section-title">输入法</text>
+
+          <div class="card" onclick="toggleImeKeyboard">
+            <div class="card-texts">
+              <text class="card-title lines-1">键盘布局</text>
+              <text class="card-sub lines-2">点击切换全键/九键</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ imeKeyboardLabel }}</text>
+            </div>
+          </div>
+
+          <div class="card" onclick="cycleImeVibrate">
+            <div class="card-texts">
+              <text class="card-title lines-1">按键振动</text>
+              <text class="card-sub lines-2">点击切换振动强度</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ imeVibrateLabel }}</text>
+            </div>
+          </div>
+
+          <div class="card" onclick="cycleImeScreen">
+            <div class="card-texts">
+              <text class="card-title lines-1">屏幕类型</text>
+              <text class="card-sub lines-2">点击切换布局类型</text>
+            </div>
+            <div class="action-pill">
+              <text class="action-pill-text">{{ imeScreenLabel }}</text>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-texts">
+              <text class="card-title lines-1">候选词数量</text>
+              <text class="card-sub lines-2">拼音候选词展示个数</text>
+            </div>
+            <div class="stepper">
+              <div class="step-btn" onclick="decImeMaxLen">
+                <text class="step-btn-text">-</text>
+              </div>
+              <text class="step-value lines-1">{{ imeMaxLength }}</text>
+              <div class="step-btn" onclick="incImeMaxLen">
+                <text class="step-btn-text">+</text>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <text class="section-title">关于应用</text>
+
+          <div class="info-card">
+            <div class="info-row">
+              <text class="info-key">名称</text>
+              <text class="info-val lines-1">{{ appNameText }}</text>
+            </div>
+            <div class="info-row">
+              <text class="info-key">包名</text>
+              <text class="info-val lines-1">{{ appPackageText }}</text>
+            </div>
+            <div class="info-row">
+              <text class="info-key">版本</text>
+              <text class="info-val lines-1">{{ appVersionText }}</text>
+            </div>
+            <div class="info-row">
+              <text class="info-key">开发者</text>
+              <text class="info-val lines-1">极客之爱</text>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <div class="action-btn action-btn-primary {{ isCheckingUpdate ? 'action-btn-busy' : '' }}" onclick="checkUpdate">
+              <text class="action-btn-text">{{ isCheckingUpdate ? '检查中...' : '检查更新' }}</text>
+            </div>
+          </div>
+        </div>
+
+        <div class="blank"></div>
+      </scroll>
+
+        <!-- 黑名单弹窗 -->
+        <div class="modal-mask {{ modalAnim }}" show="{{ showBlacklist }}">
+          <div class="modal">
+            <text class="modal-title lines-1">黑名单命令</text>
+            <text class="modal-sub lines-2">启用后，这些命令会被 Daemon 拒绝执行</text>
+
+            <scroll class="modal-list" scroll-y="true" bounces="true">
+              <div class="blacklist-hint">
+                <text class="empty-title">自定义黑名单</text>
+                <text class="empty-sub">点击“添加命令”输入，支持换行/逗号分隔</text>
+              </div>
+
+              <div class="blacklist-add" onclick="openBlacklistIme">
+                <text class="blacklist-add-text">添加命令</text>
+              </div>
+
+              <div class="blacklist-row" for="{{ blacklistDraft }}">
+                <text class="blacklist-text lines-1">{{ $item }}</text>
+                <div class="blacklist-remove" onclick="removeBlacklistItem($item)">
+                  <text class="blacklist-remove-text">移除</text>
+                </div>
+              </div>
+
+              <div class="empty" if="{{ !blacklistDraft || !blacklistDraft.length }}">
+                <text class="empty-title">暂无黑名单</text>
+                <text class="empty-sub">添加后保存即可生效</text>
+              </div>
+
+              <div class="modal-blank"></div>
+            </scroll>
+
+          <div class="modal-actions">
+            <div class="modal-btn" onclick="closeBlacklist">
+              <text class="modal-btn-text">取消</text>
+            </div>
+            <div class="modal-btn modal-btn-primary {{ isSavingBlacklist ? 'modal-btn-busy' : '' }}" onclick="saveBlacklist">
+              <text class="modal-btn-text">{{ isSavingBlacklist ? '保存中...' : '保存' }}</text>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 输入法 -->
+      <div class="ime-layer" if="{{ showIme }}">
+        <div class="ime-header">
+          <text class="ime-title">{{ imeTitle }}</text>
+          <div class="ime-confirm" onclick="confirmIme">
+            <text class="ime-confirm-text">确定</text>
+          </div>
+          <div class="ime-close" onclick="closeIme">
+            <text class="ime-close-text">取消</text>
+          </div>
+        </div>
+        <div class="ime-preview" onclick="confirmIme">
+          <text class="ime-preview-text lines-2">{{ imeInput || "请输入内容" }}</text>
+        </div>
+        <ime
+          style="width: 100%; height: 100%;"
+          hide="{{ false }}"
+          keyboardtype="{{ imeKeyboardType }}"
+          maxlength="{{ imeMaxLength }}"
+          vibratemode="{{ imeVibrateMode }}"
+          screentype="{{ imeScreenType }}"
+          @complete="onImeComplete"
+          @delete="onImeDelete"
+          @finish="confirmIme"
+        ></ime>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import page from "../../features/setting/page.js";
+
+export default page;
+</script>
+
+<style>
+/* —— 布局 —— */
+.root {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  background-color: #000000;
+  position: relative;
+}
+
+/* safe-area：圆表内切正方形 + 动画主体 */
+.safe-area {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  padding-top: 6px;
+}
+
+/* 列表区域：略大一点，卡片更饱满 */
+.list {
+  flex: 1;
+  width: 88%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+/* 顶部标题 */
+.header {
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.header-icon {
+  width: 58px;
+  height: 58px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.header-title {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.header-sub {
+  color: #7a7a7a;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* 分区标题 */
+.section {
+  width: 100%;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  color: #aaaaaa;
+  font-size: 13px;
+  margin-left: 6px;
+  margin-bottom: 8px;
+}
+
+/* —— 设置卡片 —— */
+.card {
+  width: 100%;
+  background-color: #191919;
+  border-radius: 20px;
+  padding: 12px 14px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.card-texts {
+  flex-direction: column;
+  flex: 1;
+  margin-right: 10px;
+}
+
+.card-title {
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.card-sub {
+  color: #888888;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* 右侧箭头 */
+.arrow {
+  width: 18px;
+  height: 18px;
+  opacity: 0.8;
+}
+
+/* —— 自定义开关 —— */
+.switch {
+  width: 54px;
+  height: 30px;
+  border-radius: 15px;
+  padding: 2px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  background-color: #444444;
+}
+
+/* 开关中的小圆点 */
+.switch-knob {
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  background-color: #ffffff;
+}
+
+/* 开状态：背景变绿，小圆点靠右 */
+.switch-on {
+  background-color: #00d36f;
+  justify-content: flex-end;
+}
+
+/* 关状态：保持灰色，圆点在左（默认 switch 样式即可） */
+.switch-off {
+  background-color: #444444;
+  justify-content: flex-start;
+}
+
+/* —— 步进器 —— */
+.stepper {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  width: 126px;
+}
+
+.step-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 17px;
+  background-color: #2a2a2a;
+  justify-content: center;
+  align-items: center;
+}
+
+.step-btn-text {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.step-value {
+  width: 58px;
+  color: #f2f2f2;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* —— 关于应用 —— */
+.info-card {
+  width: 100%;
+  flex-direction: column;
+  background-color: #151515;
+  border-radius: 20px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.info-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 2px;
+}
+
+.info-key {
+  color: #7a7a7a;
+  font-size: 13px;
+  width: 36%;
+}
+
+.info-val {
+  color: #f2f2f2;
+  font-size: 13px;
+  width: 64%;
+  text-align: right;
+}
+
+.action-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.action-btn {
+  width: 100%;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #2a2a2a;
+  padding-left: 12px;
+  padding-right: 12px;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-btn-primary {
+  background-color: #00d36f;
+}
+
+.action-btn-busy {
+  opacity: 0.65;
+}
+
+.action-btn-text {
+  color: #f2f2f2;
+  font-size: 14px;
+  font-weight: 800;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.action-pill {
+  min-width: 64px;
+  padding: 6px 10px;
+  border-radius: 16px;
+  background-color: #2a2a2a;
+  border-width: 1px;
+  border-color: #3a3a3a;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-pill-text {
+  color: #f2f2f2;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.blank {
+  height: 120px;
+}
+
+/* 文本行数控制（text 组件是 style 属性，不是 attribute） */
+.lines-1 {
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.lines-2 {
+  lines: 2;
+  text-overflow: ellipsis;
+}
+
+.lines-3 {
+  lines: 3;
+  text-overflow: ellipsis;
+}
+
+/* —— 黑名单弹窗 —— */
+.modal-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.55);
+  justify-content: center;
+  align-items: center;
+  transform-origin: center center;
+}
+
+.modal {
+  width: 78%;
+  height: 64%;
+  border-radius: 18px;
+  background-color: rgba(25, 25, 25, 0.98);
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px 12px;
+}
+
+.modal-title {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.modal-sub {
+  color: #7a7a7a;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.form {
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+
+.form-label {
+  color: #aaaaaa;
+  font-size: 12px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.form-input {
+  width: 100%;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #141414;
+  padding-left: 12px;
+  padding-right: 12px;
+  color: #f2f2f2;
+  font-size: 13px;
+}
+
+.modal-list {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.blacklist-hint {
+  width: 100%;
+  padding: 6px 6px 8px;
+}
+
+.blacklist-add {
+  width: 100%;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #1f3323;
+  border-width: 1px;
+  border-color: #2d5a3a;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.blacklist-add-text {
+  color: #a7f3c3;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.blacklist-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background-color: #141414;
+  border-radius: 16px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.blacklist-text {
+  width: 72%;
+  color: #f2f2f2;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.blacklist-remove {
+  padding: 4px 8px;
+  border-radius: 12px;
+  background-color: #3a1f1f;
+  border-width: 1px;
+  border-color: #ff6666;
+}
+
+.blacklist-remove-text {
+  color: #ffb3b3;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.preset-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 10px;
+  margin-bottom: 8px;
+  background-color: #141414;
+  border-radius: 16px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.preset-texts {
+  flex-direction: column;
+  width: 74%;
+}
+
+.preset-title {
+  color: #f2f2f2;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.preset-sub {
+  color: #7a7a7a;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.empty {
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 6px;
+}
+
+.empty-title {
+  color: #aaaaaa;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.empty-sub {
+  color: #7a7a7a;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.modal-blank {
+  height: 120px;
+}
+
+.modal-actions {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.modal-btn {
+  width: 46%;
+  height: 34px;
+  border-radius: 18px;
+  justify-content: center;
+  align-items: center;
+  background-color: #2a2a2a;
+}
+
+.modal-btn-primary {
+  background-color: #00d36f;
+}
+
+.modal-btn-busy {
+  opacity: 0.65;
+}
+
+.modal-btn-text {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+/* —— 输入法 —— */
+.ime-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.88);
+  z-index: 999;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.ime-header {
+  width: 100%;
+  height: 40px;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.ime-title {
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ime-close {
+  position: absolute;
+  right: 16px;
+  top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #1a1a1a;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.ime-close-text {
+  color: #cccccc;
+  font-size: 14px;
+}
+
+.ime-confirm {
+  position: absolute;
+  left: 16px;
+  top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #1f3323;
+  border-width: 1px;
+  border-color: #2d5a3a;
+}
+
+.ime-confirm-text {
+  color: #a7f3c3;
+  font-size: 14px;
+}
+
+.ime-preview {
+  width: 88%;
+  min-height: 36px;
+  margin: 6px 0 4px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #111111;
+  border-width: 1px;
+  border-color: #2a2a2a;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.ime-preview-text {
+  color: #e6e6e6;
+  font-size: 14px;
+  lines: 2;
+  text-overflow: ellipsis;
+}
+
+/* —— 页面动画 —— */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+.page-static {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.page-enter {
+  animation-name: pageIn;
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+}
+
+.page-leave {
+  animation-name: pageOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+}
+
+@keyframes pageIn {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pageOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.8); }
+}
+
+/* 弹窗动画 */
+.modal-enter {
+  animation-name: modalIn;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+.modal-leave {
+  animation-name: modalOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+@keyframes modalIn {
+  0% { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes modalOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.92); }
+}
+</style>
+
+

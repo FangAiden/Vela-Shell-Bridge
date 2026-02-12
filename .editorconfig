@@ -1,0 +1,5 @@
+root = true
+
+[*.{ux,js,json,md}]
+charset = utf-8
+

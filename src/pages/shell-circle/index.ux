@@ -1,9 +1,9 @@
-﻿<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="time-bar" src="../../ui/components/timeBar"></import>
 <import name="ime" src="../../ui/components/InputMethod/InputMethod.ux"></import>
 
 <template>
 	<div class="root">
-		<time-bar />
+		<time-bar mode="circle" />
 		<!-- 安全区容器：用 align-items: center 居中内容 -->
 		<div class="safe-wrapper {{ animClass }}">
 			<div class="content">
@@ -325,4 +325,5 @@ export default page;
 	}
 }
 </style>
+
 

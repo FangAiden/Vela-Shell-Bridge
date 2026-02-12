@@ -1,9 +1,9 @@
-import brightness from "@system.brightness";
+﻿import brightness from "@system.brightness";
 import device from "@system.device";
 import prompt from "@system.prompt";
 import { createPage } from "../../app/page.js";
 
-function getGlobalThis() {
+function getGlobalObj() {
   try {
     if (typeof globalThis !== "undefined") return globalThis;
   } catch (_) {}
@@ -60,7 +60,7 @@ function callSuccess(fn, args, timeoutMs) {
   });
 }
 
-const G = getGlobalThis();
+const G = getGlobalObj();
 
 function toast(msg, duration) {
   try {
@@ -71,11 +71,9 @@ function toast(msg, duration) {
 export default createPage({
   data: {
     showHud: true,
-
     dotX: 0,
     dotY: 0,
     dotOpacity: 0.08,
-
     keepOn: false,
     keepOnError: "",
   },
@@ -86,8 +84,6 @@ export default createPage({
     this._hudTimer = null;
     this._screenW = 0;
     this._screenH = 0;
-
-    // 初始落点（避免首帧全黑时的固定像素）
     this.dotX = 120;
     this.dotY = 80;
   },
@@ -208,7 +204,7 @@ export default createPage({
     } catch (e) {
       this.keepOn = false;
       this.keepOnError = e && e.message ? e.message : "开启失败";
-      toast(`开启常亮失败：${this.keepOnError}`, 1200);
+      toast(`开启屏幕常亮失败：${this.keepOnError}`, 1200);
     }
   },
 

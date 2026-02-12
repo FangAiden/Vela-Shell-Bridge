@@ -73,26 +73,68 @@
       "pages/index": {
         "component": "index"
       },
-      "pages/perm": {
-        "component": "perm"
+      "pages/perm-rect": {
+        "component": "index"
       },
-      "pages/file": {
-        "component": "file"
+      "pages/perm-circle": {
+        "component": "index"
       },
-      "pages/shell": {
-        "component": "shell"
+      "pages/perm-pill": {
+        "component": "index"
       },
-      "pages/setting": {
-        "component": "setting"
+      "pages/file-rect": {
+        "component": "index"
       },
-      "pages/log": {
-        "component": "log"
+      "pages/file-circle": {
+        "component": "index"
       },
-      "pages/about": {
-        "component": "about"
+      "pages/file-pill": {
+        "component": "index"
       },
-      "pages/saver": {
-        "component": "saver"
+      "pages/shell-rect": {
+        "component": "index"
+      },
+      "pages/shell-circle": {
+        "component": "index"
+      },
+      "pages/shell-pill": {
+        "component": "index"
+      },
+      "pages/setting-rect": {
+        "component": "index"
+      },
+      "pages/setting-circle": {
+        "component": "index"
+      },
+      "pages/setting-pill": {
+        "component": "index"
+      },
+      "pages/log-rect": {
+        "component": "index"
+      },
+      "pages/log-circle": {
+        "component": "index"
+      },
+      "pages/log-pill": {
+        "component": "index"
+      },
+      "pages/about-rect": {
+        "component": "index"
+      },
+      "pages/about-circle": {
+        "component": "index"
+      },
+      "pages/about-pill": {
+        "component": "index"
+      },
+      "pages/saver-rect": {
+        "component": "index"
+      },
+      "pages/saver-circle": {
+        "component": "index"
+      },
+      "pages/saver-pill": {
+        "component": "index"
       }
     }
   }

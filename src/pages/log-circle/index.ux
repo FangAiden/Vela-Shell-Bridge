@@ -1,9 +1,9 @@
-﻿<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="time-bar" src="../../ui/components/timeBar"></import>
 
 <template>
   <div class="root">
     <!-- 顶部时间条（不动画） -->
-    <time-bar />
+    <time-bar mode="circle" />
 
     <!-- 进入/退出动画主体：safe-area -->
     <div class="safe-area page-anim {{ animClass }}">
@@ -13,7 +13,7 @@
           <div class="header-top">
             <div class="header-left">
               <div class="back-hit" if="{{ isEntryView }}" onclick="backToApps">
-                <text class="back-icon">‹</text>
+                <text class="back-icon">&lt;</text>
               </div>
               <image class="header-icon" src="/resources/image/log.png" if="{{ isAppView }}"></image>
               <text class="header-title lines-1">{{ headerTitle }}</text>
@@ -593,3 +593,4 @@ export default page;
   }
 }
 </style>
+

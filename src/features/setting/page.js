@@ -1,6 +1,7 @@
 ﻿import prompt from "@system.prompt";
 import app from "@system.app";
 import suIpc from "../../services/su-daemon/index.js";
+import device from "@system.device";
 import { createPage } from "../../app/page.js";
 import { getInterconnectState, reloadInterconnectBridgeConfig } from "../../services/interconnect/index.js";
 import { getCachedTransitionsEnabled, getLocalSettings, setRemoteEnabled, setRemoteToken, updateLocalSettings } from "../../shared/settings/local-settings.js";
@@ -81,7 +82,7 @@ function splitBlacklistInput(text) {
 const DEFAULT_IME_SETTINGS = {
   keyboardType: "QWERTY",
   vibrateMode: "short",
-  screenType: "circle",
+  screenType: "auto",
   maxLength: 5,
 };
 
@@ -95,8 +96,8 @@ function normalizeImeVibrate(v) {
 }
 
 function normalizeImeScreen(v) {
-  if (v === "rect" || v === "pill-shaped") return v;
-  return "circle";
+  if (v === "auto" || v === "circle" || v === "rect" || v === "pill-shaped") return v;
+  return "auto";
 }
 
 function normalizeImeSettings(raw) {
@@ -124,6 +125,7 @@ function imeVibrateLabel(mode) {
 }
 
 function imeScreenLabel(type) {
+  if (type === "auto") return "自动";
   if (type === "rect") return "方形";
   if (type === "pill-shaped") return "胶囊";
   return "圆形";
@@ -133,6 +135,7 @@ export default createPage({
   data: {
     // local settings
     transitionsEnabled: getCachedTransitionsEnabled(),
+    isCapsule: false,
 
     // exec mode
     execMode: "async",
@@ -175,13 +178,40 @@ export default createPage({
     imeScreenLabel: imeScreenLabel(DEFAULT_IME_SETTINGS.screenType),
   },
 
+  onInit() {
+    this.detectDevice();
+  },
+
   async onShow() {
+    this.detectDevice();
     this.loadLocalSettings().then(() => {
       if (!this.transitionsEnabled) this.animClass = "page-static";
     });
     this.loadAppInfo();
     this.loadDaemonSettings();
     this.refreshRemoteStatus();
+  },
+
+  detectDevice() {
+    device.getInfo({
+      success: (ret) => {
+        console.log(`SettingPage: detectDevice shape=${ret.screenShape} w=${ret.windowWidth}`);
+        if (ret.screenShape === 'pill-shaped') {
+          this.isCapsule = true;
+        } else {
+          const w = ret.windowWidth || ret.screenWidth;
+          if (w && w < 280) {
+            this.isCapsule = true;
+          } else {
+            this.isCapsule = false;
+          }
+        }
+        console.log(`SettingPage: isCapsule=${this.isCapsule}`);
+      },
+      fail: (data, code) => {
+        console.log(`SettingPage: detectDevice failed code=${code}`);
+      }
+    });
   },
 
   // 返回时加退出动画
@@ -313,7 +343,7 @@ export default createPage({
   async refreshRemoteStatus() {
     try {
       await reloadInterconnectBridgeConfig();
-    } catch (_) {}
+    } catch (_) { }
     const st = getInterconnectState();
     this.remoteStatusText = buildRemoteStatusText(st);
 
@@ -398,7 +428,7 @@ export default createPage({
   },
 
   cycleImeScreen() {
-    const order = ["circle", "rect", "pill-shaped"];
+    const order = ["auto", "circle", "rect", "pill-shaped"];
     const idx = order.indexOf(this.imeScreenType);
     const next = order[(idx + 1 + order.length) % order.length];
     const patch = { screenType: next };

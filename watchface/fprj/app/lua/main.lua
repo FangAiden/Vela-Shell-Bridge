@@ -33,6 +33,7 @@ local num      = require("util.num")
 -------------------------------------------------
 local log_lines = {}
 local log_view = nil
+local log_wrap_chars = 56
 
 local function refresh_log_view()
     if log_view then
@@ -40,10 +41,32 @@ local function refresh_log_view()
     end
 end
 
+local function wrap_line_by_chars(line, width)
+    if type(line) ~= "string" then line = tostring(line or "") end
+    if not width or width <= 0 or #line <= width then return line end
+    local out = {}
+    local i = 1
+    while i <= #line do
+        out[#out + 1] = line:sub(i, i + width - 1)
+        i = i + width
+    end
+    return table.concat(out, "\n")
+end
+
+local function normalize_log_text(msg)
+    local src = tostring(msg or "")
+    src = src:gsub("\r\n", "\n"):gsub("\r", "\n")
+    local out = {}
+    for line in (src .. "\n"):gmatch("(.-)\n") do
+        out[#out + 1] = wrap_line_by_chars(line, log_wrap_chars)
+    end
+    return table.concat(out, "\n")
+end
+
 ctx.log_fn = function(msg)
     -- Include date for cross-day log identification
     local ts = os.date("%m-%d %H:%M:%S")
-    local line = "[" .. ts .. "] " .. tostring(msg)
+    local line = normalize_log_text("[" .. ts .. "] " .. tostring(msg))
     log_lines[#log_lines + 1] = line
     if #log_lines > 100 then table.remove(log_lines, 1) end
     refresh_log_view()
@@ -102,6 +125,87 @@ local screen_h = lvgl.VER_RES()
 local diameter = math.min(screen_w, screen_h)
 local safe = diameter - 40
 if safe < 100 then safe = diameter end
+local short_edge = math.min(screen_w, screen_h)
+local long_edge = math.max(screen_w, screen_h)
+local screen_ratio = long_edge / math.max(short_edge, 1)
+
+-- 胶囊屏（狭长屏）检测：优先匹配已知分辨率，兼容未来同类比例
+local is_pill_screen = (screen_h > screen_w) and (
+    (short_edge == 192 and long_edge == 490) or
+    (short_edge == 212 and long_edge == 520) or
+    (short_edge <= 220 and screen_ratio >= 2.0)
+)
+
+local ui = {
+    top_bar_w = 250,
+    top_bar_h = 34,
+    top_bar_y = 50,
+    time_x = 4,
+    status_w = 130,
+    status_h = 30,
+    status_radius = 15,
+    status_on_text = "SU Daemon",
+    status_off_text = "SU Stopped",
+    log_align = lvgl.ALIGN.CENTER,
+    log_y = 0,
+    log_w = safe - 20,
+    log_h = math.floor(safe * 0.50),
+    log_radius = 16,
+    btn_bar_w = 310,
+    btn_bar_h = 95,
+    btn_bar_y = -52,
+    btn_w = 84,
+    btn_h = 34,
+    btn_radius = 17,
+    btn_scan_text = "Scan",
+    btn_policy_text = "Policy",
+    btn_clear_text = "Clear",
+}
+
+if is_pill_screen then
+    local margin_x = math.max(12, math.floor(screen_w * 0.07))
+    local top_pad = math.max(10, math.floor(screen_h * 0.03))
+    local bottom_safe = math.max(28, math.floor(screen_h * 0.08))
+    local top_bar_w = screen_w - margin_x * 2
+    local status_w = math.max(84, math.floor(top_bar_w * 0.46))
+    local btn_bar_w = screen_w
+    local btn_w = math.floor((btn_bar_w - 12) / 3)
+    local top_bar_h = 32
+    local btn_bar_h = 46
+    local log_top = top_pad + top_bar_h + 12
+    local log_bottom = bottom_safe + btn_bar_h + 14
+    local log_h = screen_h - log_top - log_bottom
+    local max_log_h = math.floor(screen_h * 0.66)
+    if log_h < 120 then log_h = 120 end
+    if log_h > max_log_h then log_h = max_log_h end
+
+    ui.top_bar_w = top_bar_w
+    ui.top_bar_h = top_bar_h
+    ui.top_bar_y = top_pad
+    ui.time_x = 2
+    ui.status_w = status_w
+    ui.status_h = 28
+    ui.status_radius = 14
+    ui.status_on_text = "SU ON"
+    ui.status_off_text = "SU OFF"
+    ui.log_align = lvgl.ALIGN.TOP_MID
+    ui.log_y = log_top
+    ui.log_w = screen_w - margin_x * 2
+    ui.log_h = log_h
+    ui.log_radius = 12
+    ui.btn_bar_w = btn_bar_w
+    ui.btn_bar_h = btn_bar_h
+    ui.btn_bar_y = -bottom_safe
+    ui.btn_w = math.max(50, btn_w)
+    ui.btn_h = 34
+    ui.btn_radius = 16
+    ui.btn_policy_text = "Rules"
+end
+
+-- 根据日志区域宽度粗略估算每行字符数，避免长日志撑出可视区
+if ui.log_w and ui.log_w > 0 then
+    log_wrap_chars = math.max(20, math.floor((ui.log_w - 20) / 7))
+end
 
 -- Root
 local root = lvgl.Object(nil, {
@@ -115,8 +219,8 @@ root:add_flag(lvgl.FLAG.EVENT_BUBBLE)
 
 -- Top bar: time left + status right
 local top_bar = lvgl.Object(root, {
-    w = 250, h = 34,
-    align = lvgl.ALIGN.TOP_MID, y = 50,
+    w = ui.top_bar_w, h = ui.top_bar_h,
+    align = lvgl.ALIGN.TOP_MID, y = ui.top_bar_y,
     bg_color = C.BG, border_width = 0,
 })
 top_bar:clear_flag(lvgl.FLAG.SCROLLABLE)
@@ -125,40 +229,40 @@ top_bar:clear_flag(lvgl.FLAG.SCROLLABLE)
 local time_label = lvgl.Label(top_bar, {
     text = "--:--",
     text_color = C.TEXT_DIM,
-    align = lvgl.ALIGN.LEFT_MID, x = 4,
+    align = lvgl.ALIGN.LEFT_MID, x = ui.time_x,
 })
 
 -- Status pill (right side of top bar, clickable)
 local status_pill = lvgl.Object(top_bar, {
-    w = 130, h = 30,
+    w = ui.status_w, h = ui.status_h,
     align = lvgl.ALIGN.RIGHT_MID,
     bg_color = C.GREEN_DIM, bg_opa = 255,
-    radius = 15,
+    radius = ui.status_radius,
     border_width = 1, border_color = C.GREEN,
 })
 status_pill:clear_flag(lvgl.FLAG.SCROLLABLE)
 status_pill:add_flag(lvgl.FLAG.CLICKABLE)
 
 local status_label = lvgl.Label(status_pill, {
-    text = "SU ON",
+    text = ui.status_on_text,
     text_color = C.GREEN,
     align = lvgl.ALIGN.CENTER,
 })
 
 -- Log terminal card (scrollable)
 local log_card = lvgl.Object(root, {
-    w = safe - 20, h = math.floor(safe * 0.50),
-    align = lvgl.ALIGN.CENTER, y = 0,
+    w = ui.log_w, h = ui.log_h,
+    align = ui.log_align, y = ui.log_y,
     bg_color = C.CARD, bg_opa = 255,
-    radius = 16,
+    radius = ui.log_radius,
     border_width = 1, border_color = C.CARD_EDGE,
     pad_left = 10, pad_right = 10, pad_top = 8, pad_bottom = 8,
 })
 log_card:clear_flag(lvgl.FLAG.SCROLLABLE)
 
 log_view = lvgl.Textarea(log_card, {
-    w = safe - 40,
-    h = math.max(20, math.floor(safe * 0.50) - 16),
+    w = math.max(20, ui.log_w - 20),
+    h = math.max(20, ui.log_h - 16),
     text = "",
     text_color = C.TERM_TEXT,
     align = lvgl.ALIGN.TOP_LEFT,
@@ -171,19 +275,19 @@ ctx.log_view = log_view
 
 -- Bottom button bar
 local btn_bar = lvgl.Object(root, {
-    w = 310, h = 95,
+    w = ui.btn_bar_w, h = ui.btn_bar_h,
     bg_color = C.BG, border_width = 0,
-    align = lvgl.ALIGN.BOTTOM_MID, y = -52,
+    align = lvgl.ALIGN.BOTTOM_MID, y = ui.btn_bar_y,
 })
 btn_bar:clear_flag(lvgl.FLAG.SCROLLABLE)
 
 -- Pill button factory
 local function make_btn(parent, text, align_mode)
     local pill = lvgl.Object(parent, {
-        w = 84, h = 34,
+        w = ui.btn_w, h = ui.btn_h,
         align = align_mode,
         bg_color = C.BTN_BG, bg_opa = 255,
-        radius = 17,
+        radius = ui.btn_radius,
         border_width = 1, border_color = C.BTN_EDGE,
     })
     pill:clear_flag(lvgl.FLAG.SCROLLABLE)
@@ -196,9 +300,9 @@ local function make_btn(parent, text, align_mode)
     return pill
 end
 
-local btn_scan     = make_btn(btn_bar, "Scan",   lvgl.ALIGN.LEFT_MID)
-local btn_policies = make_btn(btn_bar, "Policy", lvgl.ALIGN.CENTER)
-local btn_clear    = make_btn(btn_bar, "Clear",  lvgl.ALIGN.RIGHT_MID)
+local btn_scan     = make_btn(btn_bar, ui.btn_scan_text, lvgl.ALIGN.LEFT_MID)
+local btn_policies = make_btn(btn_bar, ui.btn_policy_text, lvgl.ALIGN.CENTER)
+local btn_clear    = make_btn(btn_bar, ui.btn_clear_text, lvgl.ALIGN.RIGHT_MID)
 
 -------------------------------------------------
 -- UI: Status update helper
@@ -206,10 +310,10 @@ local btn_clear    = make_btn(btn_bar, "Clear",  lvgl.ALIGN.RIGHT_MID)
 local function update_status_ui()
     if ctx.enabled then
         pcall(function() status_pill:set { bg_color = C.GREEN_DIM, border_color = C.GREEN } end)
-        pcall(function() status_label:set { text = "SU Daemon", text_color = C.GREEN } end)
+        pcall(function() status_label:set { text = ui.status_on_text, text_color = C.GREEN } end)
     else
         pcall(function() status_pill:set { bg_color = C.RED_DIM, border_color = C.RED } end)
-        pcall(function() status_label:set { text = "SU Stopped", text_color = C.RED } end)
+        pcall(function() status_label:set { text = ui.status_off_text, text_color = C.RED } end)
     end
 end
 

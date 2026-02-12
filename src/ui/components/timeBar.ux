@@ -1,89 +1,124 @@
 <template>
-	<div class="root">
-		<text class="time">{{ time }}</text>
-	</div>
+  <div class="root" show="{{ showFlag !== false }}">
+    <text class="time" style="margin-top: {{ topOffset }}px; font-size: {{ fontSize }}px;">{{ time }}</text>
+  </div>
 </template>
 
 <script>
+import { getScaleByBucket } from "../../shared/ui/layout-scale.js";
+
 export default {
-	props: ["showFlag"],
-	data: {
-		time: "",
-	},
+  props: {
+    showFlag: {
+      default: true,
+    },
+    mode: {
+      default: "circle",
+    },
+    bucket: {
+      default: "",
+    },
+  },
+  data: {
+    time: "",
+    topOffset: 14,
+    fontSize: 30,
+  },
 
-	onInit() {
-		// 初始化时先对齐一次当前时间
-		this.updateTime();
-		// 再根据系统时间安排下一次对齐
-		this.scheduleNextTick();
+  onInit() {
+    this.applyLayout();
+    this.updateTime();
+    this.scheduleNextTick();
+    this.$on("page-on-show", this.handleParentShow);
+    this.$watch("mode", "applyLayout");
+    this.$watch("bucket", "applyLayout");
+  },
 
-		this.$on('page-on-show', this.handleParentShow);
-	},
+  onDestroy() {
+    if (this._minuteTimer) {
+      clearTimeout(this._minuteTimer);
+      this._minuteTimer = null;
+    }
+    this.$off("page-on-show", this.handleParentShow);
+  },
 
-	onDestroy() {
-		if (this._minuteTimer) {
-			clearTimeout(this._minuteTimer);
-			this._minuteTimer = null;
-		}
+  normalizeMode(v) {
+    const m = String(v == null ? "" : v).toLowerCase();
+    if (m === "pill-shaped" || m === "pill" || m === "capsule") return "pill-shaped";
+    if (m === "rect" || m === "rectangle") return "rect";
+    return "circle";
+  },
 
-		this.$off('page-on-show', this.handleParentShow);
-	},
+  defaultBucketByMode(mode) {
+    if (mode === "rect") return "r390";
+    if (mode === "pill-shaped") return "p212";
+    return "c480";
+  },
 
-	handleParentShow() {
-		// 初始化时先对齐一次当前时间
-		this.updateTime();
-		// 再根据系统时间安排下一次对齐
-		this.scheduleNextTick();
-	},
+  applyLayout() {
+    const mode = this.normalizeMode(this.mode);
+    const bucketKey = this.bucket || this.defaultBucketByMode(mode);
+    const scale = getScaleByBucket(bucketKey);
 
-	// 对齐到“真实世界”的分钟刻度：每次都根据当前系统时间重新计算下一次触发时间
-	scheduleNextTick() {
-		if (this._minuteTimer) {
-			clearTimeout(this._minuteTimer);
-			this._minuteTimer = null;
-		}
+    let baseTop = 14;
+    let baseFont = 30;
+    if (mode === "rect") {
+      baseTop = 10;
+      baseFont = 28;
+    } else if (mode === "pill-shaped") {
+      baseTop = 8;
+      baseFont = 22;
+    }
 
-		const now = new Date();
+    this.topOffset = Math.max(4, Math.round(baseTop * scale));
+    this.fontSize = Math.max(14, Math.round(baseFont * scale));
+  },
 
-		// 当前这一分钟已经过去的毫秒
-		const passedMs = now.getSeconds() * 1000 + now.getMilliseconds();
-		// 距离下一分钟还剩多少毫秒
-		let delay = 60 * 1000 - passedMs;
+  handleParentShow() {
+    this.applyLayout();
+    this.updateTime();
+    this.scheduleNextTick();
+  },
 
-		// 防御：极端情况下（比如时间刚好跳变）避免出现负数或异常
-		if (delay <= 0 || delay > 60 * 1000) {
-			delay = 60 * 1000;
-		}
+  scheduleNextTick() {
+    if (this._minuteTimer) {
+      clearTimeout(this._minuteTimer);
+      this._minuteTimer = null;
+    }
 
-		this._minuteTimer = setTimeout(() => {
-			// 到达下一分钟整点：先更新显示
-			this.updateTime();
-			// 然后再根据“那一刻”的系统时间安排下一次
-			this.scheduleNextTick();
-		}, delay);
-	},
+    const now = new Date();
+    const passedMs = now.getSeconds() * 1000 + now.getMilliseconds();
+    let delay = 60 * 1000 - passedMs;
+    if (delay <= 0 || delay > 60 * 1000) {
+      delay = 60 * 1000;
+    }
 
-	updateTime() {
-		const now = new Date();
-		const hh = String(now.getHours()).padStart(2, "0");
-		const mm = String(now.getMinutes()).padStart(2, "0");
-		this.time = `${hh}:${mm}`;
-	},
+    this._minuteTimer = setTimeout(() => {
+      this.updateTime();
+      this.scheduleNextTick();
+    }, delay);
+  },
+
+  updateTime() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    this.time = `${hh}:${mm}`;
+  },
 };
 </script>
 
 <style>
 .root {
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	width: 100%;
-	background-color: transparent;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  background-color: transparent;
 }
 
 .time {
-	margin-top: 14px;
-	font-weight: bold;
-	color: #f1f1f1;
+  font-weight: bold;
+  color: #f1f1f1;
 }
 </style>

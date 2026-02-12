@@ -1,5 +1,5 @@
-﻿<import name="time-bar" src="../../ui/components/timeBar"></import>
-<import name="item" src="../../features/file/ui/item"></import>
+<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="item" src="../../features/file/ui/item-circle"></import>
 <import name="ime" src="../../ui/components/InputMethod/InputMethod.ux"></import>
 
 <template>
@@ -163,7 +163,7 @@
       </div>
 
       <!-- 时间条 -->
-      <time-bar />
+      <time-bar mode="circle" />
 
       <!-- 输入法 -->
       <div class="ime-layer" if="{{ showIme }}">
@@ -390,7 +390,7 @@ export default page;
   justify-content: center;
   align-items: center;
 
-  /* ⭐ 初始状态就等于动画起点，避免第一次闪现终态 */
+  /* ? 初始状态就等于动画起点，避免第一次闪现终态 */
   opacity: 0;
   transform: scale(0.9);
   transform-origin: center center;
@@ -494,7 +494,7 @@ export default page;
   justify-content: center;
   align-items: center;
 
-  /* ⭐ 同样处理，和菜单保持一致 */
+  /* ? 同样处理，和菜单保持一致 */
   opacity: 0;
   transform: scale(0.9);
   transform-origin: center center;
@@ -713,4 +713,6 @@ export default page;
   text-overflow: ellipsis;
 }
 </style>
+
+
 

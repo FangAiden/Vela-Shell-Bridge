@@ -1,46 +1,48 @@
-﻿<import name="icon-text" src="../../ui/components/iconText"></import>
+<import name="icon-text" src="../../ui/components/iconText"></import>
 <import name="time-bar" src="../../ui/components/timeBar"></import>
 
 <template>
-	<div class="root">
-		<stack class="stack">
-			<!-- ⭐ 动画容器：包住背景和功能卡片，time-bar 不在里面 -->
-			<div class="page-body {{ animClass }}">
-				<image
-					class="background bg-layer"
-					for="{{ bgList }}"
-					tid="id"
-					src="{{ $item.src }}"
-					style="opacity: {{ bgOpacity[$idx] }}"
-				/>
+  <div class="root">
+    <stack class="stack">
+      <div class="page-body {{ animClass }}">
+        <image
+          class="background bg-layer"
+          for="{{ bgList }}"
+          tid="id"
+          src="{{ $item.src }}"
+          style="opacity: {{ bgOpacity[$idx] }}"
+        />
 
-				<scroll
-					id="funcScroll"
-					class="box"
-					scroll-x="true"
-					bounces="true"
-					onscroll="onScroll"
-					style="scroll-snap-type: x mandatory"
-				>
-					<div
-						for="{{ cards }}"
-						tid="id"
-						style="scroll-snap-align: center"
-						onclick="onClickCard($item.id)"
-					>
-						<icon-text
-							title="{{ $item.title }}"
-							subtitle="{{ $item.subtitle }}"
-							image="{{ $item.image }}"
-						/>
-					</div>
-				</scroll>
-			</div>
+        <scroll
+          id="funcScroll"
+          class="box {{ screenShape === 'pill-shaped' ? 'box-pill' : (screenShape === 'rect' ? 'box-rect' : 'box-circle') }}"
+          scroll-x="{{ screenShape !== 'pill-shaped' }}"
+          scroll-y="{{ screenShape === 'pill-shaped' }}"
+          bounces="true"
+          onscroll="onScroll"
+          style="scroll-snap-type: {{ screenShape === 'pill-shaped' ? 'y' : 'x' }} mandatory"
+        >
+          <div
+            for="{{ cards }}"
+            tid="id"
+            class="{{ screenShape === 'pill-shaped' ? 'card-pill' : (screenShape === 'rect' ? 'card-rect' : 'card-circle') }} {{ screenBucket === 'p192' ? 'card-pill-p192' : '' }}"
+            style="scroll-snap-align: center"
+            onclick="onClickCard($item.id)"
+          >
+            <icon-text
+              title="{{ $item.title }}"
+              subtitle="{{ $item.subtitle }}"
+              image="{{ $item.image }}"
+              mode="{{ screenShape }}"
+              bucket="{{ screenBucket }}"
+            />
+          </div>
+        </scroll>
+      </div>
 
-			<!-- ⭐ time-bar 保持原来位置，不参与缩放动画 -->
-			<time-bar />
-		</stack>
-	</div>
+      <time-bar mode="{{ screenShape }}" bucket="{{ screenBucket }}" />
+    </stack>
+  </div>
 </template>
 
 <script>
@@ -53,81 +55,109 @@ export default page;
 .root,
 .stack,
 .box {
-	width: 100%;
-	height: 100%;
+  width: 100%;
+  height: 100%;
 }
 
 .stack {
-	flex-direction: column;
-	justify-content: flex-start;
-	align-items: center;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
 }
 
-/* ⭐ 动画容器：只作用在背景 + 滑动卡片，不影响 time-bar */
+.box-pill {
+  flex-direction: column;
+  padding-top: 60px;
+  padding-bottom: 60px;
+  align-items: center;
+}
+
+.box-circle,
+.box-rect {
+  flex-direction: row;
+}
+
+.card-pill {
+  width: 180px;
+  height: 380px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 40px;
+  border-radius: 30px;
+}
+
+.card-pill-p192 {
+  width: 168px;
+  height: 340px;
+  margin-bottom: 30px;
+}
+
+.card-circle,
+.card-rect {
+  width: 100%;
+  height: 100%;
+}
+
 .page-body {
-	width: 100%;
-	height: 100%;
-	opacity: 0;
-	transform: scale(0.8);
-	transform-origin: center center;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
 }
 
 .page-static {
-	opacity: 1;
-	transform: scale(1);
+  opacity: 1;
+  transform: scale(1);
 }
 
-/* 进入动画：中心放大 + 淡入 */
 .page-enter {
-	animation-name: centerScaleIn;
-	animation-duration: 220ms;
-	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
-	animation-iteration-count: 1;
+  animation-name: centerScaleIn;
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
 }
 
-/* 退出动画：中心缩小 + 淡出 */
 .page-leave {
-	animation-name: centerScaleOut;
-	animation-duration: 180ms;
-	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
-	animation-iteration-count: 1;
-	transform-origin: center center;
+  animation-name: centerScaleOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+  transform-origin: center center;
 }
 
-/* 进入关键帧 */
 @keyframes centerScaleIn {
-	0% {
-		opacity: 0;
-		transform: scale(0.8);
-	}
-	100% {
-		opacity: 1;
-		transform: scale(1);
-	}
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-/* 退出关键帧 */
 @keyframes centerScaleOut {
-	0% {
-		opacity: 1;
-		transform: scale(1);
-	}
-	100% {
-		opacity: 0;
-		transform: scale(0.8);
-	}
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
 }
 
 .background {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .bg-layer {
-	position: absolute;
-	left: 0;
-	top: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
 }
 </style>
-
