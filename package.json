@@ -1,5 +1,5 @@
 {
-  "name": "SuperSU",
+  "name": "vela_su",
   "version": "1.0.0",
   "description": "",
   "engines": {
@@ -8,7 +8,7 @@
   "scripts": {
     "start": "aiot start --watch --enable-jsc",
     "build": "aiot build --enable-jsc",
-    "release": "aiot release --enable-jsc",
+    "release": "aiot release --enable-jsc --drop-console log,info,debug --optimize-css-attr --enable-image-png8",
     "lint": "eslint --format codeframe --fix --ext .ux,.js src/"
   },
   "lint-staged": {
