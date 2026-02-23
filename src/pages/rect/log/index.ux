@@ -1,0 +1,589 @@
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
+
+<template>
+  <div class="root">
+    <!-- 顶部时间条（不动画） -->
+    <time-bar mode="rect" />
+
+    <!-- 进入/退出动画主体：safe-area -->
+    <div class="safe-area page-anim {{ animClass }}">
+      <div class="content">
+        <!-- 标题 -->
+        <div class="header">
+          <div class="header-top">
+            <div class="header-left">
+              <div class="back-hit" if="{{ isEntryView }}" onclick="backToApps">
+                <text class="back-icon">&lt;</text>
+              </div>
+              <image class="header-icon" src="/resources/image/log.png" if="{{ isAppView }}"></image>
+              <text class="header-title lines-1">{{ headerTitle }}</text>
+            </div>
+            <text class="header-sub" if="{{ headerSubText }}">{{ headerSubText }}</text>
+          </div>
+
+          <div class="action-row">
+            <div class="action-btn {{ isLoading ? 'action-btn-busy' : '' }}" onclick="refreshLogs">
+              <text class="action-btn-text">刷新</text>
+            </div>
+            <div class="action-btn action-btn-danger {{ isClearing ? 'action-btn-busy' : '' }}" onclick="clearLogs">
+              <text class="action-btn-text">清空</text>
+            </div>
+          </div>
+        </div>
+
+        <scroll id="logScroll" class="log-list" scroll-y="true" bounces="true">
+          <div class="summary-card" if="{{ summaryText }}">
+            <text class="summary-text">{{ summaryText }}</text>
+          </div>
+
+          <!-- 应用列表 -->
+          <div if="{{ isAppView }}">
+            <div class="empty" if="{{ !isLoading && (!apps || !apps.length) }}">
+              <text class="empty-title">暂无应用</text>
+              <text class="empty-sub">这里会展示执行过命令的应用列表</text>
+            </div>
+
+            <div class="app-card" for="{{ apps }}" tid="appId" onclick="openApp($item.appId)">
+              <div class="app-main">
+                <text class="app-id lines-1">{{ $item.appId }}</text>
+                <text class="app-meta lines-1">{{ $item.lastText }}</text>
+              </div>
+              <div class="app-count-wrap">
+                <text class="app-count-num">{{ $item.count }}</text>
+                <text class="app-count-unit">次</text>
+              </div>
+            </div>
+          </div>
+
+          <!-- 单应用日志 -->
+          <div if="{{ isEntryView }}" style="flex-direction: column">
+            <div class="empty" if="{{ !isLoading && (!entries || !entries.length) }}">
+              <text class="empty-title">暂无记录</text>
+              <text class="empty-sub">点击上方返回查看其它应用</text>
+            </div>
+
+            <div class="entry" for="{{ entries }}" tid="id" onclick="openDetail($item.id)">
+              <div class="entry-main">
+                <text class="entry-cmd lines-1">{{ $item.cmdText }}</text>
+                <text class="entry-meta lines-1">{{ $item.appText }}</text>
+                <text class="entry-out lines-1" if="{{ $item.outBrief }}">{{ $item.outBrief }}</text>
+              </div>
+              <div class="entry-badge {{ $item.badgeClass }}">
+                <text class="entry-badge-text {{ $item.badgeTextClass }}">{{ $item.badgeText }}</text>
+              </div>
+            </div>
+          </div>
+
+          <div class="blank"></div>
+        </scroll>
+      </div>
+
+      <!-- 详情弹窗（放在 safe-area 内，避免跑出安全区） -->
+      <div class="detail-mask {{ detailAnim }}" show="{{ showDetail }}">
+        <div class="detail-modal">
+          <text class="detail-title">{{ detailTitle }}</text>
+          <div class="detail-separator"></div>
+          <scroll class="detail-body" scroll-y="true" bounces="true">
+            <text class="detail-content">{{ detailContent }}</text>
+          </scroll>
+          <div class="detail-separator"></div>
+          <div class="detail-close" onclick="closeDetail">
+            <text class="detail-close-text">关闭</text>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import page from "../../../features/log/page.js";
+
+export default page;
+</script>
+
+<style>
+.root {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  background-color: #000000;
+}
+
+.safe-area {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  position: relative;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* 内容区：限制到圆屏安全区宽度 */
+.content {
+  width: 82%;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+.header {
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.header-top {
+  width: 80%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.header-left {
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  width: 70%;
+}
+
+.back-hit {
+  width: 34px;
+  height: 34px;
+  border-radius: 17px;
+  background-color: #1a1a1a;
+  border-width: 1px;
+  border-color: #2a2a2a;
+  justify-content: center;
+  align-items: center;
+}
+
+.back-icon {
+  color: #f2f2f2;
+  font-size: 20px;
+  font-weight: 900;
+  lines: 1;
+}
+
+.header-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.header-title {
+  margin-left: 8px;
+  color: #f2f2f2;
+  font-size: 19px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.header-sub {
+  width: 30%;
+  text-align: right;
+  color: #7a7a7a;
+  font-size: 13px;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.action-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-btn {
+  width: 48%;
+  height: 44px;
+  border-radius: 16px;
+  background-color: #232323;
+  border-width: 1px;
+  border-color: #3a3a3a;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-btn-busy {
+  opacity: 0.65;
+}
+
+.action-btn-danger {
+  background-color: #3a1f1f;
+  border-color: #ff6666;
+}
+
+.action-btn-text {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+/* 列表 */
+.log-list {
+  width: 100%;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+.summary-card {
+  width: 100%;
+  background-color: #151515;
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.summary-text {
+  color: #cccccc;
+  font-size: 14px;
+  text-align: left;
+}
+
+.empty {
+  width: 100%;
+  border-radius: 14px;
+  background-color: #101010;
+  padding: 14px 12px;
+  margin-bottom: 10px;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+.empty-title {
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  margin-bottom: 4px;
+}
+
+.empty-sub {
+  color: #7a7a7a;
+  font-size: 13px;
+  text-align: left;
+}
+
+/* 应用列表 */
+.app-card {
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px;
+  margin-bottom: 10px;
+  background-color: #151515;
+  border-radius: 18px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.app-main {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex: 1;
+  margin-right: 10px;
+}
+
+.app-id {
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.app-meta {
+  color: #7a7a7a;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.app-count-wrap {
+  width: 64px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.app-count-num {
+  color: #00d36f;
+  font-size: 26px;
+  font-weight: 900;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.app-count-unit {
+  color: #7a7a7a;
+  font-size: 12px;
+  margin-top: -2px;
+}
+
+/* —— 单条统计 —— */
+.entry {
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px;
+  margin-bottom: 10px;
+  background-color: #151515;
+  border-radius: 18px;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.entry-main {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 78%;
+}
+
+.entry-cmd {
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.entry-meta {
+  color: #7a7a7a;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.entry-out {
+  color: #cccccc;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.entry-badge {
+  width: 56px;
+  height: 34px;
+  border-radius: 16px;
+  border-width: 1px;
+  justify-content: center;
+  align-items: center;
+}
+
+.entry-badge-text {
+  font-size: 14px;
+  font-weight: 800;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.badge-ok {
+  background-color: #173322;
+  border-color: #00d36f;
+}
+
+.badge-text-ok {
+  color: #00d36f;
+}
+
+.badge-err {
+  background-color: #331717;
+  border-color: #ff6666;
+}
+
+.badge-text-err {
+  color: #ff6666;
+}
+
+.badge-run {
+  background-color: #1a1a33;
+  border-color: #9999ff;
+}
+
+.badge-text-run {
+  color: #9999ff;
+}
+
+.badge-warn {
+  background-color: #332a16;
+  border-color: #ffd95e;
+}
+
+.badge-text-warn {
+  color: #ffd95e;
+}
+
+.badge-muted {
+  background-color: #232323;
+  border-color: #3a3a3a;
+}
+
+.badge-text-muted {
+  color: #cccccc;
+}
+
+.blank {
+  height: 140px;
+}
+
+/* 文本行数控制（text 组件是 style 属性，不是 attribute） */
+.lines-1 {
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+/* —— 详情弹窗 —— */
+.detail-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.55);
+  justify-content: center;
+  align-items: center;
+  transform-origin: center center;
+}
+
+.detail-modal {
+  width: 76%;
+  height: 50%;
+  border-radius: 18px;
+  background-color: rgba(25, 25, 25, 0.98);
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.detail-title {
+  text-align: center;
+  padding-top: 12px;
+  padding-bottom: 10px;
+  font-size: 16px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.detail-separator {
+  height: 1px;
+  background-color: #2d2d2d;
+}
+
+.detail-body {
+  flex: 1;
+  padding: 10px 12px;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+.detail-content {
+  color: #7cff7c;
+  font-size: 14px;
+  text-align: left;
+  width: 100%;
+  lines: 200;
+}
+
+.detail-close {
+  height: 46px;
+  justify-content: center;
+  align-items: center;
+}
+
+.detail-close-text {
+  font-size: 16px;
+  color: #f1f1f1;
+}
+
+.detail-in {
+  animation-name: detailIn;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+.detail-out {
+  animation-name: detailOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+@keyframes detailIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes detailOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* —— 页面动画 —— */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+.page-static {
+  opacity: 1;
+  transform: scale(1);
+}
+.page-enter {
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+.page-leave {
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+</style>

@@ -1,0 +1,137 @@
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
+<import name="item" src="../../../features/perm/ui/item-circle"></import>
+
+<template>
+	<div class="root">
+		<stack class="stack">
+			<!-- ? 结构不变，只在 class 里拼上 animClass -->
+			<scroll class="box {{ animClass }}" scroll-y="true" bounces="true">
+				<div class="header">
+					<image class="shield-icon" src="/resources/image/perm.png"></image>
+					<text class="title">授权管理</text>
+					<text class="subtitle">管理应用执行权限</text>
+				</div>
+
+				<div class="item-container" for="{{ permList }}" tid="index">
+					<item
+						title="{{ $item.title }}"
+						image="{{ $item.image }}"
+						count="{{ $item.count }}"
+						time="{{ $item.time }}"
+						index="{{ $item.index }}"
+						checked="{{ $item.checked }}"
+						onswitch-change="onSwitchChange"
+					/>
+				</div>
+				<div class="blank"></div>
+			</scroll>
+
+			<!-- time-bar 结构位置保持不变 -->
+			<time-bar mode="circle" />
+		</stack>
+	</div>
+</template>
+
+<script>
+import page from "../../../features/perm/page.js";
+
+export default page;
+</script>
+
+<style>
+.root,
+.stack {
+	width: 100%;
+	height: 100%;
+}
+
+.box,
+.stack {
+	flex-direction: column;
+	justify-content: flex-start;
+	align-items: center;
+}
+
+/* ? 给 box 加上初始缩放和透明度，作为动画起点 */
+.box {
+	/* 原有的布局属性保留在上面那段 .box,stack 已经设置了 flex-direction 等 */
+	opacity: 0;
+	transform: scale(0.8);
+	transform-origin: center center;
+}
+
+.page-static {
+	opacity: 1;
+	transform: scale(1);
+}
+
+/* 进入动画：中心放大 + 淡入 */
+.page-enter {
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+/* 退出动画：中心缩小 + 淡出 */
+.page-leave {
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+/* 进入关键帧 */
+/* 退出关键帧 */
+/* 中间标题区域 */
+.header {
+	margin-top: 40px;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	margin-bottom: 5px;
+}
+
+.shield-icon {
+	width: 80px;
+	height: 80px;
+	margin-bottom: 4px;
+	margin-top: 12px;
+}
+
+.title {
+	font-size: 36px;
+	font-weight: bold;
+	color: #f1f1f1;
+	margin-bottom: 4px;
+}
+
+.subtitle {
+	font-size: 20px;
+	color: #a0a0a0;
+}
+
+.blank {
+	height: 120px;
+}
+
+.item-container {
+	width: 100%;
+}
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+</style>

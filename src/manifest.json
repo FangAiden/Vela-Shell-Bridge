@@ -73,67 +73,67 @@
       "pages/index": {
         "component": "index"
       },
-      "pages/perm-rect": {
+      "pages/rect/perm": {
         "component": "index"
       },
-      "pages/perm-circle": {
+      "pages/circle/perm": {
         "component": "index"
       },
-      "pages/perm-pill": {
+      "pages/pill/perm": {
         "component": "index"
       },
-      "pages/file-rect": {
+      "pages/rect/file": {
         "component": "index"
       },
-      "pages/file-circle": {
+      "pages/circle/file": {
         "component": "index"
       },
-      "pages/file-pill": {
+      "pages/pill/file": {
         "component": "index"
       },
-      "pages/shell-rect": {
+      "pages/rect/shell": {
         "component": "index"
       },
-      "pages/shell-circle": {
+      "pages/circle/shell": {
         "component": "index"
       },
-      "pages/shell-pill": {
+      "pages/pill/shell": {
         "component": "index"
       },
-      "pages/setting-rect": {
+      "pages/rect/setting": {
         "component": "index"
       },
-      "pages/setting-circle": {
+      "pages/circle/setting": {
         "component": "index"
       },
-      "pages/setting-pill": {
+      "pages/pill/setting": {
         "component": "index"
       },
-      "pages/log-rect": {
+      "pages/rect/log": {
         "component": "index"
       },
-      "pages/log-circle": {
+      "pages/circle/log": {
         "component": "index"
       },
-      "pages/log-pill": {
+      "pages/pill/log": {
         "component": "index"
       },
-      "pages/about-rect": {
+      "pages/rect/about": {
         "component": "index"
       },
-      "pages/about-circle": {
+      "pages/circle/about": {
         "component": "index"
       },
-      "pages/about-pill": {
+      "pages/pill/about": {
         "component": "index"
       },
-      "pages/saver-rect": {
+      "pages/rect/saver": {
         "component": "index"
       },
-      "pages/saver-circle": {
+      "pages/circle/saver": {
         "component": "index"
       },
-      "pages/saver-pill": {
+      "pages/pill/saver": {
         "component": "index"
       }
     }

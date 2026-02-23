@@ -1,0 +1,797 @@
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
+
+<template>
+  <div class="root">
+    <!-- 顶部时间条：不参与动画 -->
+    <time-bar mode="circle" />
+
+    <!-- 动画主体：整块内容区域 -->
+    <div class="safe-area page-anim {{ animClass }}">
+      <scroll id="infoScroll" class="info-scroll" scroll-y="true" bounces="true" onscroll="onScroll">
+        <!-- 顶部设备卡片 -->
+        <div class="device-card">
+          <div class="device-avatar">
+            <div class="device-avatar-inner">
+              <image class="device-avatar-text" src="/resources/image/round_watch.png" />
+            </div>
+          </div>
+          <text class="device-name">{{ deviceName }}</text>
+          <text class="device-model">{{ model }}</text>
+          <text class="device-tag">开发设备</text>
+        </div>
+
+        <!-- 操作区 -->
+        <div class="action-row">
+          <div class="action-btn action-btn-green" onclick="refreshAll">
+            <text class="action-text">{{ isRefreshingAll ? '刷新中...' : '刷新' }}</text>
+          </div>
+        </div>
+
+        <!-- —— 系统 —— -->
+        <text class="section-header">系统</text>
+        <div class="section-card">
+          <div class="row">
+            <text class="row-label">内核/固件</text>
+            <text class="row-value lines-2 detail-link" onclick="openDetail('内核/固件','firmware')">{{ firmware }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">操作系统</text>
+            <text class="row-value lines-2 detail-link" onclick="openDetail('操作系统','osVersion')">{{ osVersion }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">平台版本</text>
+            <text class="row-value lines-1 detail-link" onclick="openDetail('平台版本','velaVersion')">{{ velaVersion }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">运行时长</text>
+            <text class="row-value lines-1">{{ uptimeText || '—' }}</text>
+          </div>
+        </div>
+
+        <!-- —— 设备 —— -->
+        <text class="section-header">设备</text>
+        <div class="section-card">
+          <div class="row">
+            <text class="row-label">设备 ID</text>
+            <text class="row-value small lines-1 detail-link" onclick="openDetail('设备 ID','deviceId')">{{ deviceId }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">序列号</text>
+            <text class="row-value small lines-1 detail-link" onclick="openDetail('序列号','serial')">{{ serial || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">语言/地区</text>
+            <text class="row-value lines-1">{{ language || '—' }} / {{ region || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">屏幕</text>
+            <text class="row-value lines-1">{{ screenText || '—' }}</text>
+          </div>
+
+          <div class="metric">
+            <div class="metric-head">
+              <text class="metric-title">存储</text>
+              <text class="metric-value">{{ storageUsed }} / {{ storageTotal }}</text>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-bar-fill" style="width: {{ storagePercent }}%"></div>
+            </div>
+          </div>
+
+          <div class="metric">
+            <div class="metric-head">
+              <text class="metric-title">电量</text>
+              <text class="metric-value">{{ batteryText || '—' }}</text>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-bar-fill metric-bar-fill-green" style="width: {{ batteryPercent }}%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- —— 系统服务 —— -->
+        <text class="section-header">系统服务</text>
+        <div class="section-card">
+          <div class="tile-grid">
+            <div class="tile">
+              <text class="tile-title">网络</text>
+              <text class="tile-main">{{ networkTypeText || '—' }}</text>
+              <text class="tile-sub">{{ networkDetailText || '' }}</text>
+            </div>
+            <div class="tile">
+              <text class="tile-title">亮度</text>
+              <div class="tile-bar">
+                <div class="tile-bar-fill" style="width: {{ brightnessPercent }}%"></div>
+              </div>
+              <text class="tile-main">{{ brightnessText || '—' }}</text>
+            </div>
+          </div>
+
+          <div class="tile-grid">
+            <div class="tile">
+              <text class="tile-title">音量</text>
+              <div class="tile-bar">
+                <div class="tile-bar-fill" style="width: {{ volumePercent }}%"></div>
+              </div>
+              <text class="tile-main">{{ volumeText || '—' }}</text>
+            </div>
+            <div class="tile">
+              <text class="tile-title">振动</text>
+              <text class="tile-main">{{ vibratorModeText || '—' }}</text>
+              <text class="tile-sub">{{ vibratorModeSub || '' }}</text>
+            </div>
+          </div>
+
+          <div class="row">
+            <text class="row-label">系统语言/地区</text>
+            <text class="row-value lines-1 detail-link" onclick="openDetail('系统语言/地区','localeText')">{{ localeText || '—' }}</text>
+          </div>
+        </div>
+
+        <!-- —— 位置与传感器 —— -->
+        <text class="section-header">位置与传感器</text>
+        <div class="section-card">
+          <div class="row">
+            <text class="row-label">地理位置</text>
+            <text class="row-value small lines-2 detail-link" onclick="openDetail('地理位置','locationText')">{{ locationText || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">指南针</text>
+            <text class="row-value lines-1 detail-link" onclick="openDetail('指南针','compassText')">{{ compassText || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">加速度</text>
+            <text class="row-value small lines-2 detail-link" onclick="openDetail('加速度','accelText')">{{ accelText || '—' }}</text>
+          </div>
+        </div>
+
+        <!-- —— 硬件（Shell） —— -->
+        <text class="section-header">硬件（Shell）</text>
+        <div class="section-card">
+          <div class="row">
+            <text class="row-label">Kernel</text>
+            <text class="row-value small lines-3 detail-link" onclick="openDetail('Kernel','kernelText')">{{ kernelText || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">挂载点</text>
+            <text class="row-value small lines-3 detail-link" onclick="openDetail('挂载点','mountRawText')">{{ mountText || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">网络接口</text>
+            <text class="row-value small lines-3 detail-link" onclick="openDetail('网络接口','ipRawText')">{{ ipText || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">任务/线程</text>
+            <text class="row-value lines-1">{{ processText || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">CPU</text>
+            <text class="row-value detail-link" onclick="openDetail('CPU','cpuInfoRawText')">{{ cpuModelText || '—' }}</text>
+            <text class="row-value small lines-2 detail-link" onclick="openDetail('CPU','cpuInfoRawText')">{{ cpuMetaText || '' }}</text>
+          </div>
+
+          <div class="metric">
+            <div class="metric-head">
+              <text class="metric-title">内存</text>
+              <text class="metric-value">{{ memUsedText || '—' }} / {{ memTotalText || '—' }}</text>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-bar-fill" style="width: {{ memUsedPercent }}%"></div>
+            </div>
+            <text class="metric-sub">{{ memSubText || '' }}</text>
+          </div>
+
+          <div class="metric">
+            <div class="metric-head">
+              <text class="metric-title">/data</text>
+              <text class="metric-value">{{ dataUsedText || '—' }} / {{ dataTotalText || '—' }}</text>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-bar-fill" style="width: {{ dataUsedPercent }}%"></div>
+            </div>
+            <text class="metric-sub">{{ dataSubText || '' }}</text>
+          </div>
+        </div>
+
+        <!-- —— 应用 —— -->
+        <text class="section-header">应用</text>
+        <div class="section-card">
+          <div class="row">
+            <text class="row-label">名称</text>
+            <text class="row-value lines-1">{{ appName || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">启动来源</text>
+            <text class="row-value lines-1">{{ appSourceText || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">版本</text>
+            <text class="row-value lines-1">{{ appVersion }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">构建号</text>
+            <text class="row-value lines-1">{{ buildNumber }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">包名</text>
+            <text class="row-value small lines-1">{{ packageName || '—' }}</text>
+          </div>
+        </div>
+
+        <!-- —— Shell / SU —— -->
+        <text class="section-header">Shell / SU</text>
+        <div class="section-card last-card">
+          <div class="row">
+            <text class="row-label">SU Daemon</text>
+            <text class="row-value lines-1">{{ suStatusText }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">Sandbox</text>
+            <text class="row-value small lines-1 detail-link" onclick="openDetail('Sandbox','sandboxPath')">{{ sandboxPath || '—' }}</text>
+          </div>
+
+          <div class="row">
+            <text class="row-label">Shell 能力</text>
+            <div class="caps-list" if="{{ shellCaps && shellCaps.length }}">
+              <div class="caps-item {{ $item.ok ? 'caps-item-ok' : 'caps-item-no' }}" for="{{ shellCaps }}" tid="key">
+                <text class="caps-name">{{ $item.name }}</text>
+                <text class="caps-status {{ $item.ok ? 'caps-status-ok' : 'caps-status-no' }}">{{ $item.ok ? '支持' : '不支持' }}</text>
+              </div>
+            </div>
+            <text class="row-value small lines-2" if="{{ !shellCaps || !shellCaps.length }}">{{ shellCapsText || '—' }}</text>
+          </div>
+        </div>
+
+        <!-- 底部留一点空白，避免最后一行贴边 -->
+        <div class="blank"></div>
+      </scroll>
+
+      <!-- 详情弹窗（放在 safe-area 内，避免跑出安全区） -->
+      <div class="detail-mask {{ detailAnim }}" show="{{ showDetail }}">
+        <div class="detail-modal">
+          <text class="detail-title">{{ detailTitle }}</text>
+          <div class="detail-separator"></div>
+          <scroll class="detail-body" scroll-y="true" bounces="true">
+            <text class="detail-content">{{ detailContent }}</text>
+          </scroll>
+          <div class="detail-separator"></div>
+          <div class="detail-close" onclick="closeDetail">
+            <text class="detail-close-text">关闭</text>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import page from "../../../features/about/page.js";
+
+export default page;
+</script>
+
+<style>
+/* —— 整体布局 —— */
+.root {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  background-color: #000;
+}
+
+/* 现在 safe-area 不再垂直居中，而是铺满 time-bar 下面的空间 */
+.safe-area {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;  /* 水平居中内容 */
+  position: relative;
+}
+
+/* 只在左右方向做安全区限制，垂直方向用满 */
+.info-scroll {
+  width: 88%;          /* 比原来的 82% 稍微宽一点，提高利用率 */
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* —— 顶部设备卡片 —— */
+.device-card {
+  width: 75%;
+  border-radius: 22px;
+  background-color: #151515;
+  padding: 16px 10px 14px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;     /* 距离 time-bar 稍微留一点 */
+  margin-bottom: 14px;
+}
+
+.device-avatar {
+  width: 66px;
+  height: 66px;
+  border-radius: 33px;
+  border-width: 2px;
+  border-color: #00d36f;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.device-avatar-inner {
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background-color: #0b0b0b;
+  justify-content: center;
+  align-items: center;
+}
+
+.device-avatar-text {
+  width: 80%;
+  height: 80%;
+}
+
+.device-name {
+  color: #f5f5f5;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.device-model {
+  color: #999999;
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.device-tag {
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  border-width: 1px;
+  border-color: #00d36f;
+  color: #00d36f;
+  font-size: 11px;
+}
+
+/* —— 操作按钮 —— */
+.action-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  margin-top: -6px;
+  margin-bottom: 12px;
+}
+
+.action-btn {
+  width: 100%;
+  height: 44px;
+  border-radius: 14px;
+  background-color: #232323;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  border-width: 1px;
+  border-color: #3a3a3a;
+  overflow: hidden;
+}
+
+.action-btn-green {
+  background-color: #173322;
+  border-color: #00d36f;
+}
+
+.action-text {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+  width: 100%;
+  text-align: center;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+/* —— 分区标题（在卡片外） —— */
+.section-header {
+  width: 100%;
+  color: #cccccc;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  text-align: left;
+  padding-left: 4px;
+}
+
+/* —— 信息卡片 —— */
+.section-card {
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  border-radius: 16px;
+  background-color: #121212;
+  padding: 8px 12px 6px;
+  margin-bottom: 14px;
+}
+
+.last-card {
+  margin-bottom: 8px;
+}
+
+/* —— 每条信息：一行容器，内部上下两行（标题 + 值） —— */
+.row {
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+/* 标题 */
+.row-label {
+  width: 100%;
+  color: #f5f5f5;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 值：终端绿，可换行 */
+.row-value {
+  width: 100%;
+  color: #7cff7c;
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+/* 设备 ID 等长串小一点 */
+.row-value.small {
+  font-size: 14px;
+}
+
+/* —— 指标条（存储/电量/内存/磁盘） —— */
+.metric {
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.metric-head {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.metric-title {
+  color: #f5f5f5;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.metric-value {
+  color: #7cff7c;
+  font-size: 12px;
+}
+
+.metric-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background-color: #0b0b0b;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background-color: #7cff7c;
+}
+
+.metric-bar-fill-green {
+  background-color: #00d36f;
+}
+
+.metric-sub {
+  color: #7a7a7a;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* —— 系统服务 tile —— */
+.tile-grid {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: stretch;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+
+.tile {
+  width: 48%;
+  border-radius: 14px;
+  background-color: #0f0f0f;
+  padding: 10px 10px 8px;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  border-width: 1px;
+  border-color: #242424;
+}
+
+.tile-title {
+  color: #f5f5f5;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tile-main {
+  color: #7cff7c;
+  font-size: 16px;
+  margin-top: 6px;
+}
+
+.tile-sub {
+  color: #7a7a7a;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.tile-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background-color: #0b0b0b;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.tile-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background-color: #00d36f;
+}
+
+/* —— Shell 能力 —— */
+.caps-list {
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  margin-top: 6px;
+}
+
+.caps-item {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background-color: #0f0f0f;
+  border-width: 1px;
+  border-color: #242424;
+  margin-top: 8px;
+}
+
+.caps-item-ok {
+  border-color: #00d36f;
+}
+
+.caps-item-no {
+  border-color: #2a2a2a;
+}
+
+.caps-name {
+  color: #f5f5f5;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.caps-status {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.caps-status-ok {
+  color: #00d36f;
+}
+
+.caps-status-no {
+  color: #7a7a7a;
+}
+
+/* —— 详情弹窗 —— */
+.detail-link {
+  text-overflow: ellipsis;
+}
+
+.detail-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.55);
+  justify-content: center;
+  align-items: center;
+  transform-origin: center center;
+}
+
+.detail-modal {
+  width: 80%;
+  height: 54%;
+  border-radius: 20px;
+  background-color: rgba(25, 25, 25, 0.98);
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.detail-title {
+  text-align: center;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  font-size: 16px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.detail-separator {
+  height: 1px;
+  background-color: #2d2d2d;
+}
+
+.detail-body {
+  flex: 1;
+  padding: 10px 12px;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+.detail-content {
+  color: #7cff7c;
+  font-size: 12px;
+  text-align: left;
+  width: 100%;
+  lines: 200;
+}
+
+.detail-close {
+  height: 44px;
+  justify-content: center;
+  align-items: center;
+}
+
+.detail-close-text {
+  font-size: 16px;
+  color: #f1f1f1;
+}
+
+.detail-in {
+  animation-name: detailIn;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+.detail-out {
+  animation-name: detailOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+@keyframes detailIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes detailOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* 底部空白，防止最后一块贴到圆边 */
+.blank {
+  height: 140px;
+}
+
+/* —— 页面动画 —— */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+.page-static {
+  opacity: 1;
+  transform: scale(1);
+}
+.page-enter {
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+.page-leave {
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+/* 文本行数控制（text 组件是 style 属性，不是 attribute） */
+.lines-1,
+.lines-2,
+.lines-3 {
+  text-overflow: ellipsis;
+}
+
+.lines-1 { lines: 1; }
+.lines-2 { lines: 2; }
+.lines-3 { lines: 3; }
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+</style>

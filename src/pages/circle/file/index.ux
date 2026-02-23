@@ -1,0 +1,708 @@
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
+<import name="item" src="../../../features/file/ui/item-circle"></import>
+<import name="ime" src="../../../ui/components/InputMethod/InputMethod.ux"></import>
+
+<template>
+  <div class="root">
+    <stack class="stack">
+
+      <!-- 内容区（页面动画） -->
+      <scroll
+        class="box page-anim {{ animClass }}"
+        scroll-y="true"
+        bounces="true"
+        @scroll="onScroll"
+      >
+        <div class="header" id="header">
+          <image class="shield-icon" src="/resources/image/file_manager.png"></image>
+          <text class="title">文件管理</text>
+          <text class="subtitle">浏览和操作系统文件</text>
+        </div>
+
+        <!-- 跟内容一起滚动的 navbar -->
+        <div class="navbar">
+          <marquee
+            style="font-size: 26px; color: #99999a; width: 70%; font-weight: bold;"
+            onclick="navigate"
+          >{{ currentPath }}</marquee>
+          <image
+            src="/resources/image/back.png"
+            style="width: 36px; height: 36px;"
+            onclick="previous"
+          />
+        </div>
+
+        <!-- 列表 -->
+        <div class="item-container" for="{{ fileList }}">
+          <item
+            title="{{ $item.title }}"
+            image="{{ $item.image }}"
+            type="{{ $item.type }}"
+            info="{{ $item.info }}"
+            index="{{ $item.index }}"
+            onbutton-click="onButtonClick"
+            onlong-press="onLongPress"
+          />
+        </div>
+
+        <div class="blank"></div>
+      </scroll>
+
+      <!-- 顶部遮罩，挡住 time-bar 下方区域（不动画） -->
+      <div class="top-mask"></div>
+
+      <!-- 吸顶 navbar（跟随页面动画） -->
+      <div class="sticky-wrapper page-anim {{ animClass }}" show="{{ sticky }}">
+        <div class="navbar sticky-navbar">
+          <marquee
+            style="font-size: 26px; color: #99999a; width: 70%; font-weight: bold;"
+            onclick="navigate"
+          >{{ currentPath }}</marquee>
+          <image
+            src="/resources/image/back.png"
+            style="width: 36px; height: 36px;"
+            onclick="previous"
+          />
+        </div>
+      </div>
+
+      <!-- 操作菜单弹窗：独立弹入/弹出动画 -->
+      <div class="modal-mask {{ menuAnim }}" show="{{ showMenu }}">
+        <div class="modal">
+          <text class="modal-title">
+            {{ menuTarget ? menuTarget : '' }}
+          </text>
+
+          <div class="clipboard-row">
+            <text class="clipboard-label">剪贴板</text>
+            <text class="clipboard-value">
+              {{ clipboard ? ((clipboardMode === 'cut' ? '剪切：' : '复制：') + clipboard.title) : '空' }}
+            </text>
+          </div>
+
+          <div class="modal-separator"></div>
+
+          <div class="modal-grid">
+            <div class="modal-btn" @click="copyTarget">
+              <text class="modal-btn-text">复制</text>
+            </div>
+            <div class="modal-btn {{ clipboard ? '' : 'modal-btn-disabled' }}" @click="pasteTarget">
+              <text class="modal-btn-text">
+                {{ menuTargetEntry && menuTargetEntry.isDir ? '粘贴到此处' : '粘贴' }}
+              </text>
+            </div>
+
+            <div class="modal-btn" @click="cutTarget">
+              <text class="modal-btn-text">剪切</text>
+            </div>
+            <div class="modal-btn" @click="detailTarget">
+              <text class="modal-btn-text">详细</text>
+            </div>
+
+            <div class="modal-btn" @click="renameTarget">
+              <text class="modal-btn-text">重命名</text>
+            </div>
+            <div class="modal-btn danger" @click="deleteTarget">
+              <text class="modal-btn-text danger-text">删除</text>
+            </div>
+          </div>
+
+          <div class="modal-separator"></div>
+
+          <div class="modal-item" @click="closeMenu">
+            <text class="modal-text">取消</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- 删除确认弹窗：独立弹入/弹出动画 -->
+      <div class="confirm-mask {{ confirmAnim }}" show="{{ showConfirm }}">
+        <div class="confirm">
+          <text class="confirm-title">确定删除？</text>
+          <text class="confirm-name">{{ menuTarget ? menuTarget : '' }}</text>
+
+          <div class="confirm-row">
+            <div class="confirm-btn cancel" @click="cancelDelete">
+              <text class="confirm-btn-text">取消</text>
+            </div>
+            <div class="confirm-btn danger" @click="confirmDelete">
+              <text class="confirm-btn-text danger-text">删除</text>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 详情弹窗 -->
+      <div class="detail-mask {{ detailAnim }}" show="{{ showDetail }}">
+        <div class="detail">
+          <text class="detail-title">详细信息</text>
+          <scroll class="detail-scroll" scroll-y="true" bounces="true">
+            <div class="detail-row">
+              <text class="detail-key">名称</text>
+              <text class="detail-val">{{ detailEntry ? detailEntry.title : '' }}</text>
+            </div>
+            <div class="detail-row">
+              <text class="detail-key">类型</text>
+              <text class="detail-val">{{ detailEntry ? detailEntry.type : '' }}</text>
+            </div>
+            <div class="detail-row">
+              <text class="detail-key">大小</text>
+              <text class="detail-val">{{ detailEntry ? (detailEntry.info || '—') : '' }}</text>
+            </div>
+            <div class="detail-row">
+              <text class="detail-key">路径</text>
+              <text class="detail-val detail-path">{{ detailEntry ? detailEntry.fullPath : '' }}</text>
+            </div>
+          </scroll>
+          <div class="detail-actions">
+            <div class="detail-btn" @click="closeDetail">
+              <text class="detail-btn-text">关闭</text>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 时间条 -->
+      <time-bar mode="circle" />
+
+      <!-- 输入法 -->
+      <div class="ime-layer" if="{{ showIme }}">
+        <div class="ime-header">
+          <text class="ime-title">{{ imeTitle }}</text>
+          <div class="ime-confirm" onclick="confirmIme">
+            <text class="ime-confirm-text">确定</text>
+          </div>
+          <div class="ime-close" onclick="closeIme">
+            <text class="ime-close-text">取消</text>
+          </div>
+        </div>
+        <div class="ime-preview" onclick="confirmIme">
+          <text class="ime-preview-text">{{ imeInput || "请输入内容" }}</text>
+        </div>
+        <ime
+          style="width: 100%; height: 100%;"
+          hide="{{ false }}"
+          keyboardtype="{{ imeKeyboardType }}"
+          maxlength="{{ imeMaxLength }}"
+          vibratemode="{{ imeVibrateMode }}"
+          screentype="{{ imeScreenType }}"
+          @complete="onImeComplete"
+          @delete="onImeDelete"
+          @finish="confirmIme"
+        ></ime>
+      </div>
+    </stack>
+  </div>
+</template>
+
+<script>
+import page from "../../../features/file/page.js";
+
+export default page;
+</script>
+
+<style>
+.root,
+.stack {
+  width: 100%;
+  height: 100%;
+}
+
+.box,
+.stack {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  position: relative;
+}
+
+/* 页面动画基类：scroll + sticky-wrapper 用 */
+.page-anim {
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: center center;
+}
+
+.page-static {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 页面进入动画 */
+.page-enter {
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+/* 页面退出动画 */
+.page-leave {
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  transform: scale(1);
+}
+/* —— 弹窗动画：操作菜单 & 确认框 共用 —— */
+
+/* 弹入 */
+.modal-enter {
+  animation-name: popupIn;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+}
+
+/* 弹出 */
+.modal-leave {
+  animation-name: popupOut;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-iteration-count: 1;
+}
+
+@keyframes popupIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes popupOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* 中间标题区域 */
+.header {
+  margin-top: 40px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.shield-icon {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 4px;
+  margin-top: 12px;
+}
+
+.title {
+  font-size: 36px;
+  font-weight: bold;
+  color: #f1f1f1;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  font-size: 20px;
+  color: #a0a0a0;
+}
+
+.blank {
+  height: 120px;
+}
+
+.item-container {
+  width: 100%;
+}
+
+/* 跟内容一起滚动的 navbar */
+.navbar {
+  justify-content: center;
+  align-items: center;
+  width: 80%;
+  margin-bottom: 10px;
+}
+
+/* 顶部遮罩条（不动画） */
+.top-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 60px; /* 和 time-bar 区域对齐 */
+  background-color: #000000;
+}
+
+/* 吸顶 navbar 外层：紧贴 top-mask 底部 */
+.sticky-wrapper {
+  position: absolute;
+  top: 60px;
+  left: 0;
+  width: 100%;
+  height: 56px;
+  background-color: #000000;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 吸顶内部的 navbar */
+.sticky-navbar {
+  margin-bottom: 0;
+}
+
+/* —— 操作菜单弹窗 —— */
+/* —— 操作菜单弹窗 —— */
+.modal-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.55);
+  justify-content: center;
+  align-items: center;
+
+  /* ? 初始状态就等于动画起点，避免第一次闪现终态 */
+  opacity: 0;
+  transform: scale(0.9);
+  transform-origin: center center;
+}
+
+.modal {
+  width: 76%;
+  border-radius: 24px;
+  background-color: rgba(25, 25, 25, 0.98);
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.modal-title {
+  text-align: center;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  font-size: 22px;
+  color: #ffffff;
+}
+
+.clipboard-row {
+  padding: 0 14px 8px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.clipboard-label {
+  color: #8a8a8a;
+  font-size: 14px;
+}
+
+.clipboard-value {
+  color: #d0d0d0;
+  font-size: 14px;
+  max-width: 70%;
+  text-overflow: ellipsis;
+  lines: 1;
+}
+
+.modal-separator {
+  height: 1px;
+  background-color: #2d2d2d;
+}
+
+.modal-grid {
+  padding: 10px 12px 6px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.modal-btn {
+  width: 48%;
+  height: 40px;
+  margin-bottom: 8px;
+  border-radius: 20px;
+  background-color: #333333;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-btn-disabled {
+  opacity: 0.45;
+}
+
+.modal-btn-text {
+  font-size: 20px;
+  color: #f1f1f1;
+}
+
+.modal-item {
+  height: 44px;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-text {
+  font-size: 22px;
+  color: #f1f1f1;
+}
+
+/* 危险操作颜色 */
+.danger {
+  background-color: #4a1515;
+}
+
+.danger-text {
+  color: #ff4d4f;
+}
+
+/* —— 删除确认弹窗 —— */
+.confirm-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.65);
+  justify-content: center;
+  align-items: center;
+
+  /* ? 同样处理，和菜单保持一致 */
+  opacity: 0;
+  transform: scale(0.9);
+  transform-origin: center center;
+}
+
+.confirm {
+  width: 76%;
+  border-radius: 24px;
+  background-color: rgba(25, 25, 25, 0.98);
+  padding: 14px 16px 16px;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.confirm-title {
+  font-size: 22px;
+  color: #ffffff;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.confirm-name {
+  font-size: 20px;
+  color: #bbbbbb;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.confirm-row {
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.confirm-btn {
+  width: 48%;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #333333;
+  justify-content: center;
+  align-items: center;
+}
+
+.confirm-btn-text {
+  font-size: 20px;
+  color: #f1f1f1;
+}
+
+.confirm-btn.cancel {
+  background-color: #2a2a2a;
+}
+
+/* —— 详情弹窗 —— */
+.detail-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.65);
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  transform: scale(0.9);
+  transform-origin: center center;
+}
+
+.detail {
+  width: 80%;
+  height: 58%;
+  border-radius: 20px;
+  background-color: rgba(25, 25, 25, 0.98);
+  padding: 12px 12px 10px;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.detail-title {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.detail-scroll {
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+}
+
+.detail-row {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 4px;
+}
+
+.detail-key {
+  color: #8a8a8a;
+  font-size: 13px;
+  width: 26%;
+}
+
+.detail-val {
+  color: #e8e8e8;
+  font-size: 13px;
+  width: 74%;
+  text-align: right;
+}
+
+.detail-path {
+  lines: 3;
+  text-overflow: ellipsis;
+}
+
+.detail-actions {
+  height: 42px;
+  justify-content: center;
+  align-items: center;
+}
+
+.detail-btn {
+  width: 60%;
+  height: 34px;
+  border-radius: 17px;
+  background-color: #2a2a2a;
+  justify-content: center;
+  align-items: center;
+}
+
+.detail-btn-text {
+  color: #f1f1f1;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* —— 输入法 —— */
+.ime-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.88);
+  z-index: 999;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.ime-header {
+  width: 100%;
+  height: 40px;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.ime-title {
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ime-close {
+  position: absolute;
+  right: 16px;
+  top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #1a1a1a;
+  border-width: 1px;
+  border-color: #2a2a2a;
+}
+
+.ime-close-text {
+  color: #cccccc;
+  font-size: 14px;
+}
+
+.ime-confirm {
+  position: absolute;
+  left: 16px;
+  top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #1f3323;
+  border-width: 1px;
+  border-color: #2d5a3a;
+}
+
+.ime-confirm-text {
+  color: #a7f3c3;
+  font-size: 14px;
+}
+
+.ime-preview {
+  width: 88%;
+  min-height: 36px;
+  margin: 6px 0 4px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #111111;
+  border-width: 1px;
+  border-color: #2a2a2a;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.ime-preview-text {
+  color: #e6e6e6;
+  font-size: 14px;
+  lines: 2;
+  text-overflow: ellipsis;
+}
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+</style>
