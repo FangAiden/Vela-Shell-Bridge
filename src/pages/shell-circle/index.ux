@@ -289,41 +289,33 @@ export default page;
 
 /* ====== 页面动画 ====== */
 .page-enter {
-	animation-name: centerScaleIn;
-	animation-duration: 220ms;
-	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
-	animation-iteration-count: 1;
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  transform: scale(1);
 }
-
-@keyframes centerScaleIn {
-	0% {
-		opacity: 0;
-		transform: scale(0.80);
-	}
-	100% {
-		opacity: 1;
-		transform: scale(1.00);
-	}
-}
-
 .page-leave {
-	animation-name: centerScaleOut;
-	animation-duration: 180ms;
-	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
-	animation-iteration-count: 1;
-	transform-origin: center center;
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  transform: scale(1);
 }
-
-@keyframes centerScaleOut {
-	0% {
-		opacity: 1;
-		transform: scale(1.0);
-	}
-	100% {
-		opacity: 0;
-		transform: scale(0.80);
-	}
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 </style>
-
-

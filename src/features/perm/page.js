@@ -6,7 +6,8 @@ import { createPage } from "../../app/page.js";
 import { formatHhMmFromUnixSec } from "../../shared/utils/time.js";
 
 const DEFAULT_QUICKAPP_ABS_ROOT = "/data/files/";
-const DEFAULT_ADMIN_FILES_DIR = "/data/files/com.lua.dev.template/";
+const DEFAULT_ADMIN_APP_ID = "com.vela.su.aigik";
+const DEFAULT_ADMIN_FILES_DIR = `/data/files/${DEFAULT_ADMIN_APP_ID}/`;
 
 function normalizeAbsBase(p) {
   const s = String(p == null ? "" : p).trim();
@@ -228,9 +229,11 @@ export default createPage({
 
       const root = env && (env.quickapp_root || env.quickapp_base);
       const adminDir = env && env.admin_files_dir;
+      const adminAppId = env && env.admin_app_id ? String(env.admin_app_id) : "";
+      const effectiveAdminId = selfId || adminAppId || DEFAULT_ADMIN_APP_ID;
       this.quickappAbsRoot = normalizeAbsBase(root);
       this.adminFilesDirAbs = normalizeAbsBase(
-        adminDir || (selfId ? `${this.quickappAbsRoot}${selfId}` : DEFAULT_ADMIN_FILES_DIR)
+        adminDir || `${this.quickappAbsRoot}${effectiveAdminId}`
       );
 
       const apps = scan && Array.isArray(scan.apps) ? scan.apps : [];

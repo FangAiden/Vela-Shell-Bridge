@@ -1,8 +1,22 @@
 <script>
 import { initInterconnectBridge } from "./services/interconnect/index.js";
+import file from "@system.file";
+
+function ensureSandboxMarker() {
+	try {
+		file.writeText({
+			uri: "internal://files/hello",
+			text: "vela-su-bridge\n",
+			success: () => {},
+			fail: () => {},
+			complete: () => {},
+		});
+	} catch (_) {}
+}
 
 export default {
 	onCreate() {
+		ensureSandboxMarker();
 		initInterconnectBridge().catch(() => {});
 	},
 };

@@ -4,29 +4,27 @@
 <template>
   <div class="root">
     <stack class="stack">
-      <div class="page-body {{ animClass }}">
+      <stack class="page-body page-static {{ animClass }}">
         <image
-          class="background bg-layer"
+          class="background"
           for="{{ bgList }}"
           tid="id"
           src="{{ $item.src }}"
-          style="opacity: {{ bgOpacity[$idx] }}"
+          style="opacity: {{ bgOpacity[$idx] }}; width: {{ bgWidthPx }}px; height: {{ bgHeightPx }}px; object-fit: cover"
         />
 
         <scroll
           id="funcScroll"
           class="box {{ screenShape === 'pill-shaped' ? 'box-pill' : (screenShape === 'rect' ? 'box-rect' : 'box-circle') }}"
-          scroll-x="{{ screenShape !== 'pill-shaped' }}"
-          scroll-y="{{ screenShape === 'pill-shaped' }}"
+          scroll-x="{{ false }}"
+          scroll-y="{{ false }}"
           bounces="true"
           onscroll="onScroll"
-          style="scroll-snap-type: {{ screenShape === 'pill-shaped' ? 'y' : 'x' }} mandatory"
         >
           <div
             for="{{ cards }}"
             tid="id"
             class="{{ screenShape === 'pill-shaped' ? 'card-pill' : (screenShape === 'rect' ? 'card-rect' : 'card-circle') }} {{ screenBucket === 'p192' ? 'card-pill-p192' : '' }}"
-            style="scroll-snap-align: center"
             onclick="onClickCard($item.id)"
           >
             <icon-text
@@ -38,7 +36,13 @@
             />
           </div>
         </scroll>
-      </div>
+
+        <div
+          class="gesture-layer"
+          onswipe="onSwipe"
+          onclick="onGestureTap"
+        ></div>
+      </stack>
 
       <time-bar mode="{{ screenShape }}" bucket="{{ screenBucket }}" />
     </stack>
@@ -105,59 +109,59 @@ export default page;
   opacity: 0;
   transform: scale(0.8);
   transform-origin: center center;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
 }
 
 .page-static {
   opacity: 1;
   transform: scale(1);
 }
-
 .page-enter {
-  animation-name: centerScaleIn;
-  animation-duration: 220ms;
-  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
   animation-iteration-count: 1;
+  transform: scale(1);
 }
-
 .page-leave {
-  animation-name: centerScaleOut;
-  animation-duration: 180ms;
-  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
   animation-iteration-count: 1;
-  transform-origin: center center;
+  transform: scale(1);
 }
-
-@keyframes centerScaleIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes centerScaleOut {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-}
-
 .background {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  position: absolute;
+  left: 0px;
+  top: 0px;
 }
 
-.bg-layer {
+.gesture-layer {
   position: absolute;
-  left: 0;
-  top: 0;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 </style>

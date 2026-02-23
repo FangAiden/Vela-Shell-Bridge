@@ -67,45 +67,22 @@ export default page;
 
 /* 进入动画：中心放大 + 淡入 */
 .page-enter {
-	animation-name: centerScaleIn;
-	animation-duration: 220ms;
-	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
-	animation-iteration-count: 1;
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  transform: scale(1);
 }
-
 /* 退出动画：中心缩小 + 淡出 */
 .page-leave {
-	animation-name: centerScaleOut;
-	animation-duration: 180ms;
-	animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
-	animation-iteration-count: 1;
-	transform-origin: center center;
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  transform: scale(1);
 }
-
 /* 进入关键帧 */
-@keyframes centerScaleIn {
-	0% {
-		opacity: 0;
-		transform: scale(0.8);
-	}
-	100% {
-		opacity: 1;
-		transform: scale(1);
-	}
-}
-
 /* 退出关键帧 */
-@keyframes centerScaleOut {
-	0% {
-		opacity: 1;
-		transform: scale(1);
-	}
-	100% {
-		opacity: 0;
-		transform: scale(0.8);
-	}
-}
-
 /* 中间标题区域 */
 .header {
 	margin-top: 40px;
@@ -141,7 +118,20 @@ export default page;
 .item-container {
 	width: 100%;
 }
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 </style>
-
-
-

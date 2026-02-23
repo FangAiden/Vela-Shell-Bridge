@@ -754,41 +754,20 @@ export default page;
   opacity: 1;
   transform: scale(1);
 }
-
 .page-enter {
-  animation-name: pageIn;
-  animation-duration: 220ms;
-  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-name: pageFadeIn;
+  animation-duration: 140ms;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+  transform: scale(1);
 }
-
 .page-leave {
-  animation-name: pageOut;
-  animation-duration: 180ms;
-  animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1);
+  animation-name: pageFadeOut;
+  animation-duration: 120ms;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  transform: scale(1);
 }
-
-@keyframes pageIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes pageOut {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-}
-
 /* 文本行数控制（text 组件是 style 属性，不是 attribute） */
 .lines-1,
 .lines-2,
@@ -799,5 +778,20 @@ export default page;
 .lines-1 { lines: 1; }
 .lines-2 { lines: 2; }
 .lines-3 { lines: 3; }
+@keyframes pageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes pageFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 </style>
-

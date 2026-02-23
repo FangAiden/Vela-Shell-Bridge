@@ -25,10 +25,17 @@ import {
 
 const QUICKAPP_ABS_BASE = "/data/files/";
 
-export async function refreshBasicInfo() {
+export async function refreshBasicInfo(options = {}) {
   if (this.isRefreshingBasic) return;
   this.isRefreshingBasic = true;
   const keepY = this.currentScrollY || 0;
+  const opt = options && typeof options === "object" ? options : {};
+  const mode = typeof opt.mode === "string" ? opt.mode : "full";
+  const isEnterMode = mode === "enter";
+  const collectLocation =
+    typeof opt.collectLocation === "boolean" ? opt.collectLocation : !isEnterMode;
+  const collectSensors =
+    typeof opt.collectSensors === "boolean" ? opt.collectSensors : !isEnterMode;
 
   const callSuccess = (fn, baseArgs, timeoutMs) =>
     new Promise((resolve, reject) => {
@@ -320,6 +327,7 @@ export async function refreshBasicInfo() {
     this.vibratorModeSub = "";
   }
 
+  if (collectLocation) {
   // geolocation.getLocation()
   try {
     if (geolocation && typeof geolocation.getLocation === "function") {
@@ -335,7 +343,11 @@ export async function refreshBasicInfo() {
   } catch (_) {
     if (!this.locationText) this.locationText = "不可用";
   }
+  } else if (!this.locationText) {
+    this.locationText = "点击刷新获取";
+  }
 
+  if (collectSensors) {
   // sensor: subscribe once (compass + accelerometer)
   try {
     if (sensor && typeof sensor.subscribeCompass === "function" && typeof sensor.unsubscribeCompass === "function") {
@@ -452,6 +464,10 @@ export async function refreshBasicInfo() {
       }
     }
   } catch (_) {}
+  } else {
+    if (!this.compassText) this.compassText = "点击刷新获取";
+    if (!this.accelText) this.accelText = "点击刷新获取";
+  }
 
   this.isRefreshingBasic = false;
   setTimeout(() => {

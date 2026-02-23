@@ -5,7 +5,9 @@
 </template>
 
 <script>
+import device from "@system.device";
 import { getScaleByBucket } from "../../shared/ui/layout-scale.js";
+import { pickNearestBucket } from "../../shared/ui/screen-profile.js";
 
 export default {
   props: {
@@ -23,15 +25,17 @@ export default {
     time: "",
     topOffset: 14,
     fontSize: 30,
+    autoBucket: "",
   },
 
   onInit() {
     this.applyLayout();
+    this.syncAutoBucket();
     this.updateTime();
     this.scheduleNextTick();
     this.$on("page-on-show", this.handleParentShow);
-    this.$watch("mode", "applyLayout");
-    this.$watch("bucket", "applyLayout");
+    this.$watch("mode", "handleLayoutInputChange");
+    this.$watch("bucket", "handleLayoutInputChange");
   },
 
   onDestroy() {
@@ -49,15 +53,53 @@ export default {
     return "circle";
   },
 
+  handleLayoutInputChange() {
+    this.applyLayout();
+    this.syncAutoBucket();
+  },
+
   defaultBucketByMode(mode) {
     if (mode === "rect") return "r390";
     if (mode === "pill-shaped") return "p212";
     return "c480";
   },
 
+  resolveBucket(mode) {
+    const explicit = String(this.bucket == null ? "" : this.bucket).trim();
+    if (explicit) return explicit;
+    const auto = String(this.autoBucket == null ? "" : this.autoBucket).trim();
+    if (auto) return auto;
+    return this.defaultBucketByMode(mode);
+  },
+
+  syncAutoBucket() {
+    const explicit = String(this.bucket == null ? "" : this.bucket).trim();
+    if (explicit) return;
+    if (this._loadingAutoBucket) return;
+    this._loadingAutoBucket = true;
+
+    device.getInfo({
+      success: (ret) => {
+        this._loadingAutoBucket = false;
+        const info = ret && typeof ret === "object" ? ret : {};
+        const mode = this.normalizeMode(this.mode);
+        const width = Number(info.windowWidth || info.screenWidth || 0);
+        const height = Number(info.windowHeight || info.screenHeight || 0);
+        const bucket = pickNearestBucket(mode, width, height);
+        if (bucket && bucket !== this.autoBucket) {
+          this.autoBucket = bucket;
+          this.applyLayout();
+        }
+      },
+      fail: () => {
+        this._loadingAutoBucket = false;
+      },
+    });
+  },
+
   applyLayout() {
     const mode = this.normalizeMode(this.mode);
-    const bucketKey = this.bucket || this.defaultBucketByMode(mode);
+    const bucketKey = this.resolveBucket(mode);
     const scale = getScaleByBucket(bucketKey);
 
     let baseTop = 14;
@@ -76,6 +118,7 @@ export default {
 
   handleParentShow() {
     this.applyLayout();
+    this.syncAutoBucket();
     this.updateTime();
     this.scheduleNextTick();
   },

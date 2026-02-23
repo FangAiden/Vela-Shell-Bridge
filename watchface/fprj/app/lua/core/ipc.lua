@@ -47,6 +47,33 @@ local function write_json_file(path, obj)
     return fs.write_file(path, txt)
 end
 
+local function normalize_base(path)
+    return str.trim_trailing_slashes(tostring(path or ""))
+end
+
+function M.get_quickapp_base()
+    return QUICKAPP_BASE
+end
+
+function M.set_quickapp_base(path)
+    local base = normalize_base(path)
+    if base == "" then
+        return false, "empty quickapp base"
+    end
+
+    QUICKAPP_BASE = base
+    IPC_CTX.QUICKAPP_BASE = base
+
+    if type(config.set_quickapp_base) == "function" then
+        config.set_quickapp_base(base)
+    else
+        config.QUICKAPP_BASE = base
+    end
+    IPC_CTX.APP_INSTALL_BASE = config.APP_INSTALL_BASE
+
+    return true, base
+end
+
 ----------------------------------------------------------------------
 -- 扫描单个 app（带重试）
 ----------------------------------------------------------------------

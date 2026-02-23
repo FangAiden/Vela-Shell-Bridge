@@ -2,6 +2,12 @@
 import { refreshBasicInfo } from "./about-basic.js";
 import { refreshHardwareInfo } from "./about-shell.js";
 
+const ABOUT_REFRESH_GAP_MS = 80;
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
 export default createPage({
   data: {
     deviceName: "Root Shell Watch",
@@ -80,8 +86,22 @@ export default createPage({
   },
 
   onShow() {
-    // 进入页自动刷新（动态信息每次刷新，静态 Shell 走缓存）
-    this.refreshAll("enter");
+    if (this._enterRefreshTimer) {
+      clearTimeout(this._enterRefreshTimer);
+      this._enterRefreshTimer = 0;
+    }
+    // Let page finish rendering before starting system API calls.
+    this._enterRefreshTimer = setTimeout(() => {
+      this._enterRefreshTimer = 0;
+      this.refreshAll("enter");
+    }, 80);
+  },
+
+  onHide() {
+    if (this._enterRefreshTimer) {
+      clearTimeout(this._enterRefreshTimer);
+      this._enterRefreshTimer = 0;
+    }
   },
 
   onBackPress() {
@@ -182,12 +202,30 @@ export default createPage({
   },
 
   async refreshAll(arg) {
-    const mode = (typeof arg === "string") ? arg : "full";
+    const mode = (typeof arg === "string")
+      ? arg
+      : (arg && typeof arg === "object" && typeof arg.mode === "string")
+        ? arg.mode
+        : "safe";
+    const isEnterMode = mode === "enter";
+    const isSafeMode = isEnterMode || mode === "safe";
     if (this.isRefreshingAll) return;
     this.isRefreshingAll = true;
 
     try {
-      await refreshBasicInfo.call(this);
+      await refreshBasicInfo.call(this, {
+        mode,
+        collectLocation: !isSafeMode,
+        collectSensors: !isSafeMode
+      });
+      if (isSafeMode) {
+        this.suStatus = "unknown";
+        this.suError = "";
+        this.updateSuText();
+        if (!this.shellCapsText) this.shellCapsText = "点击刷新后加载";
+        return;
+      }
+      await waitMs(ABOUT_REFRESH_GAP_MS);
       await refreshHardwareInfo.call(this, { mode });
     } finally {
       this.isRefreshingAll = false;

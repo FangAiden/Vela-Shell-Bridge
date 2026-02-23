@@ -297,9 +297,17 @@ reg("get_settings", function(args, ipc_ctx, req)
 end)
 
 reg("get_env", function(args, ipc_ctx, req)
+    local base = str.trim(ipc_ctx.QUICKAPP_BASE or "")
+    local admin_id = str.trim(ipc_ctx.ADMIN_APP_ID or "")
+    local admin_files_dir = ""
+    if base ~= "" and admin_id ~= "" then
+        admin_files_dir = base .. "/" .. admin_id
+    end
     return responses.ok(req.id, {
         quickapp_base = ipc_ctx.QUICKAPP_BASE,
+        quickapp_root = ipc_ctx.QUICKAPP_BASE,
         admin_app_id = ipc_ctx.ADMIN_APP_ID,
+        admin_files_dir = admin_files_dir,
         apps_json = ipc_ctx.APPS_JSON,
         app_install_base = ipc_ctx.APP_INSTALL_BASE,
     })

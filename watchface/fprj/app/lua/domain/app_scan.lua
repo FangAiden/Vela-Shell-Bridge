@@ -5,80 +5,15 @@ local str    = require("util.str")
 
 local M = {}
 
-local function is_valid_app_id(name)
-    if type(name) ~= "string" then
-        return false
-    end
+local APPS_JSON_MAX_DEPTH = 5
+local apps_json_path_cache = nil
 
-    -- 去掉前后空白
-    name = name:match("^%s*(.-)%s*$")
-
-    if name == "" or name == "." or name == ".." then
-        return false
-    end
-
-    -- 过滤掉 ls 的目录头部，比如 "/data/files:"
-    if name:find(":") or name:find("/") then
-        return false
-    end
-
-    -- /data/files 下可能存在临时脚本或其它文件（如 "_bg_exit.sh"），这里做更严格的 AppId 过滤：
-    -- - 必须包含 "."（形如 com.example.app）
-    -- - 仅允许字母/数字/下划线/中划线/点
-    -- - 不能以 "_" 或 "." 开头
-    -- - 不能以 ".sh" 等脚本后缀结尾
-    if name:sub(1, 1) == "_" or name:sub(1, 1) == "." then
-        return false
-    end
-
-    if name:sub(-3) == ".sh" or name:sub(-4) == ".lua" or name:sub(-5) == ".json" then
-        return false
-    end
-
-    if not name:find("%.") then
-        return false
-    end
-
-    if name:sub(-1) == "." or name:find("%.%.") then
-        return false
-    end
-
-    if not name:match("^[%w][%w%._%-]*$") then
-        return false
-    end
-    
-    return true
+local function safe_str(v)
+    return str.safe_str(v)
 end
 
-function M.scan_all_apps(base_dir)
-    local apps = {}
-
-    if type(base_dir) ~= "string" or base_dir == "" then
-        return apps
-    end
-
-    local entries = fs.list_files(base_dir)
-    if not entries or #entries == 0 then
-        return apps
-    end
-
-    for _, name in ipairs(entries) do
-        if type(name) == "string" and name:sub(-1) == "/" then
-            name = name:sub(1, -2)
-        end
-
-        if is_valid_app_id(name) then
-            -- /data/files 下可能混入脚本/日志文件：只认目录
-            local full = base_dir .. "/" .. name
-            if fs.is_dir and fs.is_dir(full) then
-                apps[#apps + 1] = name
-            end
-        end
-    end
-
-    table.sort(apps)
-
-    return apps
+local function trim(v)
+    return (safe_str(v):match("^%s*(.-)%s*$"))
 end
 
 local function as_list(v)
@@ -91,42 +26,148 @@ local function as_list(v)
     return {}
 end
 
-local safe_str = str.safe_str
-
-local function pick_app_name(it)
-    if type(it) ~= "table" then return "" end
-    local names = it.names
-    if type(names) ~= "table" then return "" end
-    local first = names[1]
-    if type(first) == "table" and first.value ~= nil then
-        return safe_str(first.value)
-    end
-    return ""
+local function append_unique(list, seen, value)
+    local s = trim(value)
+    if s == "" then return false end
+    if seen[s] then return false end
+    seen[s] = true
+    list[#list + 1] = s
+    return true
 end
 
-local function resolve_app_dir(pkg)
-    local bases = as_list(config.APP_INSTALL_BASE)
-    if #bases == 0 then
-        bases = { "/data/app" }
+local function is_valid_app_id(name)
+    if type(name) ~= "string" then
+        return false
     end
 
-    for _, base in ipairs(bases) do
-        if type(base) == "string" and base ~= "" then
-            local dir = base .. "/" .. pkg
-            if fs.is_dir and fs.is_dir(dir) then
-                return dir, base
+    name = name:match("^%s*(.-)%s*$")
+    if name == "" or name == "." or name == ".." then
+        return false
+    end
+    if name:find(":") or name:find("/") then
+        return false
+    end
+    if name:sub(1, 1) == "_" or name:sub(1, 1) == "." then
+        return false
+    end
+    if name:sub(-3) == ".sh" or name:sub(-4) == ".lua" or name:sub(-5) == ".json" then
+        return false
+    end
+    if not name:find("%.") then
+        return false
+    end
+    if name:sub(-1) == "." or name:find("%.%.") then
+        return false
+    end
+    if not name:match("^[%w][%w%._%-]*$") then
+        return false
+    end
+    return true
+end
+
+local function parse_lines(text)
+    local out = {}
+    local src = safe_str(text):gsub("\r\n", "\n"):gsub("\r", "\n")
+    for line in (src .. "\n"):gmatch("(.-)\n") do
+        local s = trim(line)
+        if s ~= "" then
+            out[#out + 1] = s
+        end
+    end
+    return out
+end
+
+function M.scan_all_apps(base_dir)
+    local apps = {}
+    local seen = {}
+
+    if type(base_dir) ~= "string" or base_dir == "" then
+        return apps
+    end
+
+    local entries = fs.list_files(base_dir)
+    if not entries or #entries == 0 then
+        return apps
+    end
+
+    for _, raw_name in ipairs(entries) do
+        local name = raw_name
+        if type(name) == "string" and name:sub(-1) == "/" then
+            name = name:sub(1, -2)
+        end
+        if is_valid_app_id(name) then
+            local full = base_dir .. "/" .. name
+            if fs.is_dir and fs.is_dir(full) and not seen[name] then
+                seen[name] = true
+                apps[#apps + 1] = name
             end
         end
     end
 
-    return nil, nil
+    table.sort(apps)
+    return apps
 end
 
-local function join_path(dir, rel)
-    local r = safe_str(rel)
-    r = r:gsub("^/+", "")
-    if r == "" then return "" end
-    return dir .. "/" .. r
+local function pick_app_id(it)
+    if type(it) ~= "table" then return "" end
+    local candidates = {
+        it.package, it.packageName, it.package_name,
+        it.appId, it.app_id, it.id,
+    }
+    for _, raw in ipairs(candidates) do
+        local pkg = trim(raw)
+        if pkg ~= "" and is_valid_app_id(pkg) then
+            return pkg
+        end
+    end
+    return ""
+end
+
+local function pick_app_name(it)
+    if type(it) ~= "table" then return "" end
+
+    local direct = {
+        it.name, it.appName, it.app_name, it.title, it.label,
+    }
+    for _, raw in ipairs(direct) do
+        local v = trim(raw)
+        if v ~= "" then return v end
+    end
+
+    local names = it.names
+    if type(names) == "table" then
+        local first = names[1]
+        if type(first) == "table" then
+            local value = trim(first.value or first.name or first.title)
+            if value ~= "" then return value end
+        elseif type(first) == "string" then
+            local value = trim(first)
+            if value ~= "" then return value end
+        end
+    end
+
+    local locale_names = it.localeNames or it.locale_names
+    if type(locale_names) == "table" then
+        for _, v in pairs(locale_names) do
+            local value = trim(v)
+            if value ~= "" then return value end
+        end
+    end
+
+    return ""
+end
+
+local function pick_icon_raw(it)
+    if type(it) ~= "table" then return "" end
+    local candidates = {
+        it.icon, it.iconPath, it.icon_path,
+        it.logo, it.logoPath, it.logo_path,
+    }
+    for _, raw in ipairs(candidates) do
+        local s = trim(raw)
+        if s ~= "" then return s end
+    end
+    return ""
 end
 
 local function is_system_abs_path(p)
@@ -142,26 +183,24 @@ local function is_system_abs_path(p)
     )
 end
 
-local function resolve_icon_abs(app_dir, icon_rel)
-    local raw = safe_str(icon_rel)
-    raw = raw:match("^%s*(.-)%s*$")
+local function join_path(dir, rel)
+    local r = safe_str(rel):gsub("^/+", "")
+    if r == "" then return "" end
+    return dir .. "/" .. r
+end
 
-    -- 兼容 "internal://files/xx.png"
+local function resolve_icon_abs(app_dir, icon_rel)
+    local raw = trim(icon_rel)
     local prefix = "internal://files/"
     if raw:sub(1, #prefix) == prefix then
         raw = raw:sub(#prefix + 1)
     end
 
-    -- apps.json 通常是相对路径；如果给了“系统绝对路径”，也直接用
     if raw:sub(1, 1) == "/" then
-        if is_system_abs_path(raw) then
-            if fs.file_exists and fs.file_exists(raw) then
-                return raw
-            end
-        else
-            -- 像 "/resources/xx.png" 这种更像“应用内绝对路径”，按相对路径处理
-            raw = raw:gsub("^/+", "")
+        if is_system_abs_path(raw) and fs.file_exists and fs.file_exists(raw) then
+            return raw
         end
+        raw = raw:gsub("^/+", "")
     end
 
     if raw ~= "" then
@@ -171,7 +210,6 @@ local function resolve_icon_abs(app_dir, icon_rel)
         end
     end
 
-    -- 兜底：一些常见 icon 名称（尽量放 png）
     local candidates = {
         "assets/image/logo.png",
         "assets/images/logo.png",
@@ -194,19 +232,143 @@ local function resolve_icon_abs(app_dir, icon_rel)
     return ""
 end
 
-local function resolve_apps_json_path()
-    local candidates = as_list(config.APPS_JSON)
-    if #candidates == 0 then
-        candidates = { "/data/apps.json", "/data/quickapp/apps.json" }
+local function resolve_app_dir(pkg)
+    local bases = as_list(config.APP_INSTALL_BASE)
+    if #bases == 0 then
+        bases = { "/data/app", "/data/quickapp/app", "/data/app/quickapp" }
     end
 
+    local suffixes = {
+        "",
+        "/app",
+        "/apps",
+        "/quickapp",
+        "/installed",
+    }
+
+    for _, base in ipairs(bases) do
+        local b = trim(base)
+        if b ~= "" then
+            for _, suffix in ipairs(suffixes) do
+                local dir = b .. suffix .. "/" .. pkg
+                if fs.is_dir and fs.is_dir(dir) then
+                    return dir, b
+                end
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function pick_apps_list(obj)
+    if type(obj) ~= "table" then return nil end
+
+    local list_keys = {
+        "InstalledApps",
+        "installedApps",
+        "apps",
+        "installed",
+        "appList",
+        "app_list",
+    }
+
+    for _, key in ipairs(list_keys) do
+        local v = obj[key]
+        if type(v) == "table" then
+            return v
+        end
+    end
+
+    local data = obj.data
+    if type(data) == "table" then
+        for _, key in ipairs(list_keys) do
+            local v = data[key]
+            if type(v) == "table" then
+                return v
+            end
+        end
+    end
+
+    if type(obj[1]) == "table" then
+        return obj
+    end
+
+    return nil
+end
+
+local function read_apps_json_file(path)
+    local txt = path and fs.read_file(path) or nil
+    if not txt or txt == "" then return nil, nil end
+    local ok, obj = pcall(JSON.decode, txt)
+    if not ok or type(obj) ~= "table" then return nil, nil end
+    local list = pick_apps_list(obj)
+    if type(list) ~= "table" then return nil, nil end
+    return obj, list
+end
+
+local function iter_app_items(list, visitor)
+    if type(list) ~= "table" or type(visitor) ~= "function" then
+        return
+    end
+
+    local n = #list
+    if n > 0 then
+        for i = 1, n do
+            visitor(list[i])
+        end
+        return
+    end
+
+    for _, item in pairs(list) do
+        visitor(item)
+    end
+end
+
+local function find_apps_json_under_data()
+    local tmp = config.TMP_DIR .. "/scan_apps_json_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999)) .. ".txt"
+    local cmd = "find /data -maxdepth " .. tostring(APPS_JSON_MAX_DEPTH) .. " -type f -name apps.json 2>/dev/null > " .. str.sh_quote(tmp)
+    os.execute(cmd)
+    local lines = parse_lines(fs.read_file(tmp) or "")
+    fs.remove_file(tmp)
+    return lines
+end
+
+local function resolve_apps_json_path()
+    if apps_json_path_cache and fs.file_exists and fs.file_exists(apps_json_path_cache) then
+        return apps_json_path_cache
+    end
+
+    local candidates = {}
+    local seen = {}
+    local configured = as_list(config.APPS_JSON)
+    for _, p in ipairs(configured) do
+        append_unique(candidates, seen, p)
+    end
+    append_unique(candidates, seen, "/data/apps.json")
+    append_unique(candidates, seen, "/data/quickapp/apps.json")
+    append_unique(candidates, seen, "/data/system/apps.json")
+    append_unique(candidates, seen, "/data/quickapp/system/apps.json")
+
     for _, p in ipairs(candidates) do
-        if type(p) == "string" and p ~= "" then
-            if fs.file_exists and fs.file_exists(p) then
+        if fs.file_exists and fs.file_exists(p) then
+            local _, list = read_apps_json_file(p)
+            if list then
+                apps_json_path_cache = p
                 return p
             end
         end
     end
+
+    local found = find_apps_json_under_data()
+    for _, p in ipairs(found) do
+        local _, list = read_apps_json_file(p)
+        if list then
+            apps_json_path_cache = p
+            return p
+        end
+    end
+
     return nil
 end
 
@@ -217,20 +379,21 @@ local function scan_install_dirs_fallback()
 
     local bases = as_list(config.APP_INSTALL_BASE)
     if #bases == 0 then
-        bases = { "/data/app" }
+        bases = { "/data/app", "/data/quickapp/app", "/data/app/quickapp", "/data/files" }
     end
 
     for _, base in ipairs(bases) do
-        if type(base) == "string" and base ~= "" then
-            local entries = fs.list_files(base)
+        local b = trim(base)
+        if b ~= "" then
+            local entries = fs.list_files(b)
             if entries and #entries > 0 then
-                for _, name in ipairs(entries) do
+                for _, raw_name in ipairs(entries) do
+                    local name = raw_name
                     if type(name) == "string" and name:sub(-1) == "/" then
                         name = name:sub(1, -2)
                     end
-
                     if is_valid_app_id(name) then
-                        local app_dir = base .. "/" .. name
+                        local app_dir = b .. "/" .. name
                         if fs.is_dir and fs.is_dir(app_dir) and not seen[name] then
                             seen[name] = true
                             out_apps[#out_apps + 1] = name
@@ -249,45 +412,75 @@ local function scan_install_dirs_fallback()
     return out_apps, meta
 end
 
--- 从 apps.json 获取已安装包名，并用 APP_INSTALL_BASE 校验目录存在；同时返回 icon 的绝对路径（若能定位）。
-function M.scan_installed_apps()
-    local apps = {}
-    local meta = {}
-
-    local apps_json_path = resolve_apps_json_path()
-    local txt = apps_json_path and fs.read_file(apps_json_path) or nil
-    if not txt or txt == "" then
-        return scan_install_dirs_fallback()
-    end
-
-    local ok, obj = pcall(JSON.decode, txt)
-    if not ok or type(obj) ~= "table" then
-        return scan_install_dirs_fallback()
-    end
-
-    local list = obj.InstalledApps
-    if type(list) ~= "table" then
-        return scan_install_dirs_fallback()
-    end
-
-    local seen = {}
-    for _, it in ipairs(list) do
-        if type(it) == "table" then
-            local pkg = safe_str(it.package)
-            if pkg ~= "" and is_valid_app_id(pkg) then
-                local app_dir = resolve_app_dir(pkg)
-                if app_dir then
-                    if not seen[pkg] then
-                        seen[pkg] = true
-                        apps[#apps + 1] = pkg
-                    end
-                    meta[pkg] = {
-                        name = pick_app_name(it),
-                        icon = resolve_icon_abs(app_dir, it.icon),
-                    }
+local function merge_meta(base_meta, extra_meta)
+    if type(extra_meta) ~= "table" then return end
+    for app_id, m in pairs(extra_meta) do
+        if is_valid_app_id(app_id) and type(m) == "table" then
+            local cur = base_meta[app_id]
+            if type(cur) ~= "table" then
+                base_meta[app_id] = {
+                    name = trim(m.name),
+                    icon = trim(m.icon),
+                }
+            else
+                if trim(cur.name) == "" and trim(m.name) ~= "" then
+                    cur.name = trim(m.name)
+                end
+                if trim(cur.icon) == "" and trim(m.icon) ~= "" then
+                    cur.icon = trim(m.icon)
                 end
             end
         end
+    end
+end
+
+function M.scan_installed_apps()
+    local apps = {}
+    local meta = {}
+    local seen = {}
+
+    local apps_json_path = resolve_apps_json_path()
+    local _, list = read_apps_json_file(apps_json_path)
+
+    if type(list) == "table" then
+        iter_app_items(list, function(it)
+            if type(it) == "table" then
+                local pkg = pick_app_id(it)
+                if pkg ~= "" and not seen[pkg] then
+                    seen[pkg] = true
+                    apps[#apps + 1] = pkg
+                end
+
+                if pkg ~= "" then
+                    local app_dir = resolve_app_dir(pkg)
+                    local icon_raw = pick_icon_raw(it)
+                    local icon = ""
+                    if app_dir then
+                        icon = resolve_icon_abs(app_dir, icon_raw)
+                    end
+                    if icon == "" then
+                        icon = icon_raw
+                    end
+                    meta[pkg] = {
+                        name = pick_app_name(it),
+                        icon = trim(icon),
+                    }
+                end
+            end
+        end)
+    end
+
+    local fb_apps, fb_meta = scan_install_dirs_fallback()
+    for _, app_id in ipairs(fb_apps) do
+        if not seen[app_id] then
+            seen[app_id] = true
+            apps[#apps + 1] = app_id
+        end
+    end
+    merge_meta(meta, fb_meta)
+
+    if #apps == 0 then
+        return fb_apps, fb_meta
     end
 
     table.sort(apps)
