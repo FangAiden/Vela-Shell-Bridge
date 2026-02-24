@@ -2,6 +2,12 @@
 -- 1) top_zone    : time + daemon switch
 -- 2) log_zone    : main log area (flex-grow)
 -- 3) button_zone : 3 action buttons
+--
+-- Shape adaptation:
+-- - circle/pill: top zone uses vertical stacking (time above status).
+-- - circle: keep log/button inside safe area by larger content padding.
+-- - circle: button zone uses 2+1 layout (two buttons above, one below).
+-- - pill: reserve bigger button zone and stack 3 buttons vertically.
 
 local M = {}
 
@@ -44,40 +50,40 @@ local BUCKET_LAYOUT = {
         button = { h = 34, radius = 17, min_w = 40 },
     },
     c466 = {
-        content = { padding = { left = 20, right = 20, top = 18, bottom = 18 }, row_gap = 8, min_w = 120 },
+        content = { padding = { left = 42, right = 42, top = 26, bottom = 22 }, row_gap = 8, min_w = 120 },
         text = { font_h = 16, char_w = 7 },
-        top_zone = { h = 44, padding = { left = 0, right = 0, top = 0, bottom = 0 } },
-        status = { h = 28, w_ratio = 0.48, radius = 14, min_w = 64, min_right_space = 56 },
-        log_zone = { min_h = 130, radius = 14, padding = { left = 10, right = 10, top = 8, bottom = 8 } },
-        button_zone = { h = 56, padding = { left = 0, right = 0, top = 0, bottom = 0 }, gap = 7 },
-        button = { h = 34, radius = 17, min_w = 40 },
+        top_zone = { h = 72, gap = 8, padding = { left = 0, right = 0, top = 0, bottom = 0 } },
+        status = { h = 28, w_ratio = 0.48, stack_w_ratio = 0.64, radius = 14, min_w = 64, min_right_space = 56 },
+        log_zone = { min_h = 110, radius = 14, padding = { left = 10, right = 10, top = 8, bottom = 8 } },
+        button_zone = { h = 76, padding = { left = 18, right = 18, top = 0, bottom = 0 }, gap = 6, pair_item_ratio = 0.82 },
+        button = { h = 30, radius = 15, min_w = 40 },
     },
     c480 = {
-        content = { padding = { left = 22, right = 22, top = 20, bottom = 20 }, row_gap = 8, min_w = 120 },
+        content = { padding = { left = 44, right = 44, top = 28, bottom = 24 }, row_gap = 8, min_w = 120 },
         text = { font_h = 16, char_w = 7 },
-        top_zone = { h = 46, padding = { left = 0, right = 0, top = 0, bottom = 0 } },
-        status = { h = 28, w_ratio = 0.48, radius = 14, min_w = 64, min_right_space = 56 },
-        log_zone = { min_h = 136, radius = 14, padding = { left = 10, right = 10, top = 8, bottom = 8 } },
-        button_zone = { h = 58, padding = { left = 0, right = 0, top = 0, bottom = 0 }, gap = 8 },
-        button = { h = 34, radius = 17, min_w = 40 },
+        top_zone = { h = 74, gap = 8, padding = { left = 0, right = 0, top = 0, bottom = 0 } },
+        status = { h = 28, w_ratio = 0.48, stack_w_ratio = 0.66, radius = 14, min_w = 64, min_right_space = 56 },
+        log_zone = { min_h = 114, radius = 14, padding = { left = 10, right = 10, top = 8, bottom = 8 } },
+        button_zone = { h = 80, padding = { left = 20, right = 20, top = 0, bottom = 0 }, gap = 6, pair_item_ratio = 0.82 },
+        button = { h = 30, radius = 15, min_w = 40 },
     },
     p192 = {
         content = { padding = { left = 10, right = 10, top = 8, bottom = 8 }, row_gap = 6, min_w = 120 },
         text = { font_h = 14, char_w = 6 },
-        top_zone = { h = 34, padding = { left = 0, right = 0, top = 0, bottom = 0 } },
-        status = { h = 22, w_ratio = 0.46, radius = 11, min_w = 64, min_right_space = 56 },
+        top_zone = { h = 70, gap = 8, padding = { left = 0, right = 0, top = 4, bottom = 0 } },
+        status = { h = 22, w_ratio = 0.46, stack_w_ratio = 0.74, radius = 11, min_w = 64, min_right_space = 56 },
         log_zone = { min_h = 90, radius = 10, padding = { left = 8, right = 8, top = 6, bottom = 6 } },
-        button_zone = { h = 46, padding = { left = 0, right = 0, top = 0, bottom = 0 }, gap = 4 },
-        button = { h = 30, radius = 15, min_w = 40 },
+        button_zone = { h = 128, padding = { left = 18, right = 18, top = 0, bottom = 0 }, gap = 4 },
+        button = { h = 34, radius = 15, min_w = 40 },
     },
     p212 = {
         content = { padding = { left = 10, right = 10, top = 8, bottom = 8 }, row_gap = 6, min_w = 120 },
         text = { font_h = 14, char_w = 6 },
-        top_zone = { h = 36, padding = { left = 0, right = 0, top = 0, bottom = 0 } },
-        status = { h = 24, w_ratio = 0.46, radius = 12, min_w = 64, min_right_space = 56 },
+        top_zone = { h = 74, gap = 8, padding = { left = 0, right = 0, top = 4, bottom = 0 } },
+        status = { h = 24, w_ratio = 0.46, stack_w_ratio = 0.76, radius = 12, min_w = 64, min_right_space = 56 },
         log_zone = { min_h = 96, radius = 10, padding = { left = 8, right = 8, top = 6, bottom = 6 } },
-        button_zone = { h = 48, padding = { left = 0, right = 0, top = 0, bottom = 0 }, gap = 4 },
-        button = { h = 30, radius = 15, min_w = 40 },
+        button_zone = { h = 136, padding = { left = 20, right = 20, top = 0, bottom = 0 }, gap = 4 },
+        button = { h = 34, radius = 15, min_w = 40 },
     },
 }
 
@@ -142,13 +148,16 @@ end
 function M.compute(screen_w, screen_h)
     local bucket_key = M.detect_bucket_key(screen_w, screen_h)
     local cfg = BUCKET_LAYOUT[bucket_key] or BUCKET_LAYOUT.r432
+    local shape_prefix = bucket_key:sub(1, 1)
     local is_pill_screen = bucket_key:sub(1, 1) == "p"
+    local is_circle_screen = shape_prefix == "c"
 
     local ui = {
         screen_w = screen_w,
         screen_h = screen_h,
         bucket_key = bucket_key,
         is_pill_screen = is_pill_screen,
+        is_circle_screen = is_circle_screen,
     }
 
     local content_padding = read_box(cfg.content.padding, { left = 0, right = 0, top = 0, bottom = 0 })
@@ -170,8 +179,12 @@ function M.compute(screen_w, screen_h)
 
     ui.font_h = clamp_int(cfg.text.font_h, 10, 24, 16)
     ui.char_w = clamp_int(cfg.text.char_w, 5, 12, 7)
+    ui.top_vertical = is_pill_screen or is_circle_screen
+    ui.button_vertical = is_pill_screen
+    ui.button_circle_split = is_circle_screen
 
     ui.top_zone_h = clamp_int(cfg.top_zone.h, 24, screen_h, 40)
+    ui.top_gap = clamp_int(cfg.top_zone.gap, 0, 20, 4)
     local top_padding = read_box(cfg.top_zone.padding, { left = 0, right = 0, top = 0, bottom = 0 })
     ui.top_pad_left = clamp_int(top_padding.left, 0, ui.content_w, 0)
     ui.top_pad_right = clamp_int(top_padding.right, 0, ui.content_w, 0)
@@ -188,13 +201,20 @@ function M.compute(screen_w, screen_h)
     ui.status_h = clamp_int(cfg.status.h, 16, ui.top_zone_h, 24)
     ui.status_radius = clamp_int(cfg.status.radius, 0, 40, 12)
     local status_ratio = tonumber(cfg.status.w_ratio) or 0.48
+    local status_stack_ratio = tonumber(cfg.status.stack_w_ratio) or 0.86
     local status_min_w = clamp_int(cfg.status.min_w, 48, math.max(48, top_inner_w), 64)
-    local status_min_right_space = clamp_int(cfg.status.min_right_space, 24, math.max(24, top_inner_w), 56)
-    local status_max_w = math.max(status_min_w, top_inner_w - status_min_right_space)
-    ui.status_w = math.floor(top_inner_w * status_ratio)
-    if ui.status_w < status_min_w then ui.status_w = status_min_w end
-    if ui.status_w > status_max_w then ui.status_w = status_max_w end
-    if ui.status_w > top_inner_w then ui.status_w = top_inner_w end
+    if ui.top_vertical then
+        ui.status_w = math.floor(top_inner_w * status_stack_ratio)
+        if ui.status_w < status_min_w then ui.status_w = status_min_w end
+        if ui.status_w > top_inner_w then ui.status_w = top_inner_w end
+    else
+        local status_min_right_space = clamp_int(cfg.status.min_right_space, 24, math.max(24, top_inner_w), 56)
+        local status_max_w = math.max(status_min_w, top_inner_w - status_min_right_space)
+        ui.status_w = math.floor(top_inner_w * status_ratio)
+        if ui.status_w < status_min_w then ui.status_w = status_min_w end
+        if ui.status_w > status_max_w then ui.status_w = status_max_w end
+        if ui.status_w > top_inner_w then ui.status_w = top_inner_w end
+    end
 
     ui.log_radius = clamp_int(cfg.log_zone.radius, 0, 30, 12)
     ui.log_min_h = clamp_int(cfg.log_zone.min_h, 32, screen_h, 120)
@@ -233,16 +253,59 @@ function M.compute(screen_w, screen_h)
         ui.btn_h = math.max(20, btn_inner_h)
     end
 
-    ui.btn_w = math.floor((btn_inner_w - ui.btn_gap * 2) / 3)
-    if ui.btn_w < btn_min_w then
-        ui.btn_gap = 2
+    if ui.button_vertical then
+        ui.btn_w = btn_inner_w
+        if ui.btn_w < btn_min_w then ui.btn_w = btn_min_w end
+        if ui.btn_w > btn_inner_w then ui.btn_w = btn_inner_w end
+        local total_h = ui.btn_h * 3 + ui.btn_gap * 2
+        if total_h > btn_inner_h then
+            ui.btn_h = math.max(20, math.floor((btn_inner_h - ui.btn_gap * 2) / 3))
+        end
+        ui.btn_single_w = ui.btn_w
+        ui.btn_pair_w = ui.btn_w
+    elseif ui.button_circle_split then
+        ui.btn_w = math.floor((btn_inner_w - ui.btn_gap) / 2)
+        if ui.btn_w < btn_min_w then
+            ui.btn_gap = 2
+            ui.btn_w = math.floor((btn_inner_w - ui.btn_gap) / 2)
+        end
+        if ui.btn_w < btn_min_w then
+            ui.btn_w = math.max(24, math.floor(btn_inner_w / 2))
+            ui.btn_gap = math.max(0, btn_inner_w - ui.btn_w * 2)
+        end
+        if ui.btn_w > btn_inner_w then ui.btn_w = btn_inner_w end
+        local total_h = ui.btn_h * 2 + ui.btn_gap
+        if total_h > btn_inner_h then
+            ui.btn_h = math.max(20, math.floor((btn_inner_h - ui.btn_gap) / 2))
+        end
+        local pair_ratio = tonumber(cfg.button_zone.pair_item_ratio) or 0.88
+        local pair_item_w = math.floor(ui.btn_w * pair_ratio)
+        if pair_item_w < btn_min_w then pair_item_w = btn_min_w end
+        if pair_item_w > ui.btn_w then pair_item_w = ui.btn_w end
+
+        local pair_row_w = pair_item_w * 2 + ui.btn_gap
+        if pair_row_w > btn_inner_w then
+            pair_item_w = math.max(btn_min_w, math.floor((btn_inner_w - ui.btn_gap) / 2))
+            pair_row_w = pair_item_w * 2 + ui.btn_gap
+        end
+
+        ui.btn_single_w = ui.btn_w
+        ui.btn_pair_item_w = pair_item_w
+        ui.btn_pair_w = pair_row_w
+    else
         ui.btn_w = math.floor((btn_inner_w - ui.btn_gap * 2) / 3)
+        if ui.btn_w < btn_min_w then
+            ui.btn_gap = 2
+            ui.btn_w = math.floor((btn_inner_w - ui.btn_gap * 2) / 3)
+        end
+        if ui.btn_w < btn_min_w then
+            ui.btn_w = math.max(24, math.floor(btn_inner_w / 3))
+            ui.btn_gap = math.max(0, math.floor((btn_inner_w - ui.btn_w * 3) / 2))
+        end
+        if ui.btn_w > btn_inner_w then ui.btn_w = btn_inner_w end
+        ui.btn_single_w = ui.btn_w
+        ui.btn_pair_w = ui.btn_w
     end
-    if ui.btn_w < btn_min_w then
-        ui.btn_w = math.max(24, math.floor(btn_inner_w / 3))
-        ui.btn_gap = math.max(0, math.floor((btn_inner_w - ui.btn_w * 3) / 2))
-    end
-    if ui.btn_w > btn_inner_w then ui.btn_w = btn_inner_w end
 
     local available_h = screen_h - ui.content_pad_top - ui.content_pad_bottom - ui.content_row_gap * 2
     local fit_log_min = available_h - ui.top_zone_h - ui.btn_zone_h

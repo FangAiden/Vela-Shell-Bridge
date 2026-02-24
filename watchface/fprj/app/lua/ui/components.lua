@@ -11,9 +11,10 @@ local function set_flex_grow(obj, grow)
     pcall(function() obj:set_flex_grow(grow) end)
 end
 
-local function make_btn(lvgl, parent, theme, ui, text)
+local function make_btn(lvgl, parent, theme, ui, text, custom_w)
+    local w = custom_w or ui.btn_w
     local pill = lvgl.Object(parent, {
-        w = ui.btn_w,
+        w = w,
         h = ui.btn_h,
         bg_color = theme.BTN_BG,
         bg_opa = 255,
@@ -61,9 +62,14 @@ function M.create(lvgl, theme, ui, texts)
         pad_right = ui.top_pad_right or 0,
         pad_top = ui.top_pad_top or 0,
         pad_bottom = ui.top_pad_bottom or 0,
+        pad_row = ui.top_vertical and (ui.top_gap or 0) or 0,
     })
     top_zone:clear_flag(lvgl.FLAG.SCROLLABLE)
-    set_flex(top_zone, lvgl, lvgl.FLEX_FLOW.ROW, lvgl.FLEX_ALIGN.SPACE_BETWEEN, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+    if ui.top_vertical then
+        set_flex(top_zone, lvgl, lvgl.FLEX_FLOW.COLUMN, lvgl.FLEX_ALIGN.START, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+    else
+        set_flex(top_zone, lvgl, lvgl.FLEX_FLOW.ROW, lvgl.FLEX_ALIGN.SPACE_BETWEEN, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+    end
 
     local time_label = lvgl.Label(top_zone, {
         text = "--:--",
@@ -130,14 +136,57 @@ function M.create(lvgl, theme, ui, texts)
         pad_right = ui.btn_zone_pad_right or 0,
         pad_top = ui.btn_zone_pad_top or 0,
         pad_bottom = ui.btn_zone_pad_bottom or 0,
-        pad_column = ui.btn_gap or 0,
+        pad_column = (not ui.button_vertical and not ui.button_circle_split) and (ui.btn_gap or 0) or 0,
+        pad_row = (ui.button_vertical or ui.button_circle_split) and (ui.btn_gap or 0) or 0,
     })
     button_zone:clear_flag(lvgl.FLAG.SCROLLABLE)
-    set_flex(button_zone, lvgl, lvgl.FLEX_FLOW.ROW, lvgl.FLEX_ALIGN.START, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+    if ui.button_vertical then
+        set_flex(button_zone, lvgl, lvgl.FLEX_FLOW.COLUMN, lvgl.FLEX_ALIGN.START, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+    elseif ui.button_circle_split then
+        set_flex(button_zone, lvgl, lvgl.FLEX_FLOW.COLUMN, lvgl.FLEX_ALIGN.START, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+    else
+        set_flex(button_zone, lvgl, lvgl.FLEX_FLOW.ROW, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+    end
 
-    local btn_scan = make_btn(lvgl, button_zone, theme, ui, t.btn_scan_text or "Scan")
-    local btn_policies = make_btn(lvgl, button_zone, theme, ui, t.btn_policy_text or "Policy")
-    local btn_clear = make_btn(lvgl, button_zone, theme, ui, t.btn_clear_text or "Clear")
+    local btn_scan = nil
+    local btn_policies = nil
+    local btn_clear = nil
+    if ui.button_circle_split then
+        local top_row = lvgl.Object(button_zone, {
+            w = ui.btn_pair_w or (ui.btn_w * 2 + (ui.btn_gap or 0)),
+            h = ui.btn_h,
+            bg_opa = 0,
+            border_width = 0,
+            pad_left = 0,
+            pad_right = 0,
+            pad_top = 0,
+            pad_bottom = 0,
+            pad_column = ui.btn_gap or 0,
+        })
+        top_row:clear_flag(lvgl.FLAG.SCROLLABLE)
+        set_flex(top_row, lvgl, lvgl.FLEX_FLOW.ROW, lvgl.FLEX_ALIGN.START, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+
+        local bottom_row = lvgl.Object(button_zone, {
+            w = ui.btn_single_w or ui.btn_w,
+            h = ui.btn_h,
+            bg_opa = 0,
+            border_width = 0,
+            pad_left = 0,
+            pad_right = 0,
+            pad_top = 0,
+            pad_bottom = 0,
+        })
+        bottom_row:clear_flag(lvgl.FLAG.SCROLLABLE)
+        set_flex(bottom_row, lvgl, lvgl.FLEX_FLOW.ROW, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER, lvgl.FLEX_ALIGN.CENTER)
+
+        btn_scan = make_btn(lvgl, top_row, theme, ui, t.btn_scan_text or "Scan", ui.btn_pair_item_w or ui.btn_w)
+        btn_policies = make_btn(lvgl, top_row, theme, ui, t.btn_policy_text or "Policy", ui.btn_pair_item_w or ui.btn_w)
+        btn_clear = make_btn(lvgl, bottom_row, theme, ui, t.btn_clear_text or "Clear", ui.btn_single_w or ui.btn_w)
+    else
+        btn_scan = make_btn(lvgl, button_zone, theme, ui, t.btn_scan_text or "Scan")
+        btn_policies = make_btn(lvgl, button_zone, theme, ui, t.btn_policy_text or "Policy")
+        btn_clear = make_btn(lvgl, button_zone, theme, ui, t.btn_clear_text or "Clear")
+    end
 
     local function update_status(enabled)
         if enabled then
