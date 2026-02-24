@@ -68,10 +68,10 @@ function buildRemoteSummary(enabled, token) {
 function buildRemoteStatusText(state) {
   const st = state && typeof state === "object" ? state : {};
   if (!st.remoteEnabled) return "未启用";
-  if (st.connected || st.readyState === 1) return "已连接";
+  if (st.connected) return "已连接";
   if (st.lastErrorMessage) return `错误：${st.lastErrorMessage}`;
   if (st.lastCloseAt) return st.lastCloseReason ? `已断开：${st.lastCloseReason}` : "已断开";
-  return "等待手机连接...";
+  return "等待连接...";
 }
 
 function splitBlacklistInput(text) {

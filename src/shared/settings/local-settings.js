@@ -1,6 +1,9 @@
 import storage from "@system.storage";
+import file from "@system.file";
 
 const STORAGE_KEY = "vela_shell_bridge_local_settings_v1";
+const FALLBACK_FILE_URI = "internal://files/local_settings_v1.json";
+const NOOP = () => {};
 
 const G = (() => {
   try {
@@ -128,7 +131,7 @@ function storageSetRaw(key, value, timeoutMs) {
     const t = setTimeout(() => {
       if (done) return;
       done = true;
-      resolve(false);
+      resolve({ ok: false, reason: "timeout", code: 0, message: "" });
     }, timeoutMs || 800);
 
     try {
@@ -139,26 +142,163 @@ function storageSetRaw(key, value, timeoutMs) {
           if (done) return;
           done = true;
           clearTimeout(t);
-          resolve(true);
+          resolve({ ok: true, reason: "", code: 0, message: "" });
         },
-        fail: () => {
+        fail: (data, code) => {
           if (done) return;
           done = true;
           clearTimeout(t);
-          resolve(false);
+          const msg =
+            (data && typeof data === "object" && data.message) ||
+            (typeof data === "string" ? data : "");
+          resolve({
+            ok: false,
+            reason: "fail",
+            code: code || 0,
+            message: String(msg || ""),
+          });
         },
       });
     } catch (_) {
       if (done) return;
       done = true;
       clearTimeout(t);
-      resolve(false);
+      resolve({ ok: false, reason: "throw", code: 0, message: "" });
     }
   });
 }
 
+function fileGetRaw(uri, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve(null);
+    }, timeoutMs || 1200);
+
+    try {
+      file.readText({
+        uri,
+        success: (data) => {
+          if (done) return;
+          done = true;
+          clearTimeout(t);
+          if (data && data.text != null) resolve(String(data.text));
+          else resolve(null);
+        },
+        fail: () => {
+          if (done) return;
+          done = true;
+          clearTimeout(t);
+          resolve(null);
+        },
+        complete: NOOP,
+      });
+    } catch (_) {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      resolve(null);
+    }
+  });
+}
+
+function fileSetRaw(uri, text, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve({ ok: false, reason: "file_timeout", code: 0, message: "" });
+    }, timeoutMs || 1800);
+
+    try {
+      file.writeText({
+        uri,
+        text: String(text == null ? "" : text),
+        success: () => {
+          if (done) return;
+          done = true;
+          clearTimeout(t);
+          resolve({ ok: true, reason: "", code: 0, message: "" });
+        },
+        fail: (data, code) => {
+          if (done) return;
+          done = true;
+          clearTimeout(t);
+          const msg =
+            (data && typeof data === "object" && data.message) ||
+            (typeof data === "string" ? data : "");
+          resolve({
+            ok: false,
+            reason: "file_fail",
+            code: code || 0,
+            message: String(msg || ""),
+          });
+        },
+        complete: NOOP,
+      });
+    } catch (_) {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      resolve({ ok: false, reason: "file_throw", code: 0, message: "" });
+    }
+  });
+}
+
+function parseRawSettings(raw) {
+  if (raw == null) return null;
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return null;
+    }
+  }
+  if (typeof raw === "object") return raw;
+  return null;
+}
+
 let cache = null;
 let inflight = null;
+let writeChain = Promise.resolve();
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function runWriteExclusive(task) {
+  const next = writeChain.then(task, task);
+  writeChain = next.catch(() => {});
+  return next;
+}
+
+async function persistLocalSettings(value) {
+  const plan = [
+    { timeout: 1200, wait: 80 },
+    { timeout: 1800, wait: 140 },
+    { timeout: 2600, wait: 0 },
+  ];
+  let last = { ok: false, reason: "unknown", code: 0, message: "" };
+  for (let i = 0; i < plan.length; i++) {
+    const step = plan[i];
+    const ret = await storageSetRaw(STORAGE_KEY, value, step.timeout);
+    if (ret && ret.ok) return ret;
+    last = ret || last;
+    if (step.wait > 0 && i < plan.length - 1) {
+      await waitMs(step.wait);
+    }
+  }
+  const fb = await fileSetRaw(FALLBACK_FILE_URI, value, 2200);
+  if (fb && fb.ok) {
+    return fb;
+  }
+  return fb || last;
+}
 
 export function getCachedLocalSettings() {
   return cache || G.__VSB_LOCAL_SETTINGS__ || null;
@@ -176,14 +316,16 @@ export async function getLocalSettings(options = {}) {
 
   inflight = (async () => {
     const raw = await storageGetRaw(STORAGE_KEY);
-    let obj = null;
-    if (raw && typeof raw === "string") {
-      try {
-        obj = JSON.parse(raw);
-      } catch (_) {
-        obj = null;
+    let obj = parseRawSettings(raw);
+
+    if (!obj) {
+      const fbRaw = await fileGetRaw(FALLBACK_FILE_URI, 1500);
+      obj = parseRawSettings(fbRaw);
+      if (obj) {
+        storageSetRaw(STORAGE_KEY, JSON.stringify(normalize(obj)), 1200).catch(() => {});
       }
     }
+
     cache = normalize(obj);
     syncGlobal(cache);
     inflight = null;
@@ -235,15 +377,19 @@ function applyPatch(current, patch) {
 }
 
 export async function updateLocalSettings(patch) {
-  const current = await getLocalSettings();
-  const next = applyPatch(current, patch);
-  const ok = await storageSetRaw(STORAGE_KEY, JSON.stringify(next));
-  if (!ok) {
-    throw new Error("persist local settings failed");
-  }
-  cache = next;
-  syncGlobal(cache);
-  return next;
+  return runWriteExclusive(async () => {
+    const current = await getLocalSettings();
+    const next = applyPatch(current, patch);
+    const persisted = await persistLocalSettings(JSON.stringify(next));
+    if (!persisted || !persisted.ok) {
+      const reason = persisted && persisted.reason ? persisted.reason : "unknown";
+      const code = persisted && persisted.code ? `:${persisted.code}` : "";
+      throw new Error(`persist local settings failed (${reason}${code})`);
+    }
+    cache = next;
+    syncGlobal(cache);
+    return next;
+  });
 }
 
 export async function setUiTransitionsEnabled(enabled) {
