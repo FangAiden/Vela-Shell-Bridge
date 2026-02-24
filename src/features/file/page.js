@@ -322,12 +322,8 @@ export default createPage({
     if (!hit) return;
     this.menuTargetEntry = hit;
     this.menuTarget = hit.title;
+    this.menuAnim = "modal-enter";
     this.showMenu = true;
-
-    this.menuAnim = "";
-    setTimeout(() => {
-      this.menuAnim = "modal-enter";
-    }, 0);
   },
 
   closeMenu() {
@@ -402,11 +398,8 @@ export default createPage({
   deleteTarget() {
     if (!this.menuTargetEntry) return;
 
+    this.confirmAnim = "modal-enter";
     this.showConfirm = true;
-    this.confirmAnim = "";
-    setTimeout(() => {
-      this.confirmAnim = "modal-enter";
-    }, 0);
   },
 
   confirmDelete() {
@@ -454,11 +447,8 @@ export default createPage({
 
   openDetail(entry) {
     this.detailEntry = entry || null;
+    this.detailAnim = "modal-enter";
     this.showDetail = true;
-    this.detailAnim = "";
-    setTimeout(() => {
-      this.detailAnim = "modal-enter";
-    }, 0);
   },
 
   closeDetail() {

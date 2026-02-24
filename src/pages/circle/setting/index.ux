@@ -193,8 +193,8 @@
       </scroll>
 
         <!-- 黑名单弹窗 -->
-        <div class="modal-mask {{ modalAnim }}" show="{{ showBlacklist }}">
-          <div class="modal">
+        <div class="modal-mask" show="{{ showBlacklist }}">
+          <div class="modal {{ modalAnim }}">
             <text class="modal-title lines-1">黑名单命令</text>
             <text class="modal-sub lines-2">启用后，这些命令会被 Daemon 拒绝执行</text>
 
@@ -561,7 +561,7 @@ export default page;
   background-color: rgba(0, 0, 0, 0.55);
   justify-content: center;
   align-items: center;
-  transform-origin: center center;
+  z-index: 900;
 }
 
 .modal {
@@ -890,13 +890,21 @@ export default page;
 }
 
 @keyframes modalIn {
-  0% { opacity: 0; transform: scale(0.92); }
-  100% { opacity: 1; transform: scale(1); }
+0% {
+  opacity: 0;
+}
+100% {
+  opacity: 1;
+}
 }
 
 @keyframes modalOut {
-  0% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.92); }
+0% {
+  opacity: 1;
+}
+100% {
+  opacity: 0;
+}
 }
 @keyframes pageFadeIn {
   0% {

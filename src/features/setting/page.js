@@ -515,11 +515,8 @@ export default createPage({
 
   openBlacklist() {
     this.blacklistDraft = uniqStrings(this.cmdBlacklist);
+    this.modalAnim = "modal-enter";
     this.showBlacklist = true;
-    this.modalAnim = "";
-    setTimeout(() => {
-      this.modalAnim = "modal-enter";
-    }, 0);
   },
 
   closeBlacklist() {

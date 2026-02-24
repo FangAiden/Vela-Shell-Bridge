@@ -67,8 +67,8 @@
       </div>
 
       <!-- 操作菜单弹窗：独立弹入/弹出动画 -->
-      <div class="modal-mask {{ menuAnim }}" show="{{ showMenu }}">
-        <div class="modal">
+      <div class="modal-mask" show="{{ showMenu }}">
+        <div class="modal {{ menuAnim }}">
           <text class="modal-title">
             {{ menuTarget ? menuTarget : '' }}
           </text>
@@ -116,8 +116,8 @@
       </div>
 
       <!-- 删除确认弹窗：独立弹入/弹出动画 -->
-      <div class="confirm-mask {{ confirmAnim }}" show="{{ showConfirm }}">
-        <div class="confirm">
+      <div class="confirm-mask" show="{{ showConfirm }}">
+        <div class="confirm {{ confirmAnim }}">
           <text class="confirm-title">确定删除？</text>
           <text class="confirm-name">{{ menuTarget ? menuTarget : '' }}</text>
 
@@ -133,8 +133,8 @@
       </div>
 
       <!-- 详情弹窗 -->
-      <div class="detail-mask {{ detailAnim }}" show="{{ showDetail }}">
-        <div class="detail">
+      <div class="detail-mask" show="{{ showDetail }}">
+        <div class="detail {{ detailAnim }}">
           <text class="detail-title">详细信息</text>
           <scroll class="detail-scroll" scroll-y="true" bounces="true">
             <div class="detail-row">
@@ -258,6 +258,7 @@ export default page;
   animation-duration: 180ms;
   animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
   animation-iteration-count: 1;
+  animation-fill-mode: forwards;
 }
 
 /* 弹出 */
@@ -266,28 +267,25 @@ export default page;
   animation-duration: 180ms;
   animation-timing-function: cubic-bezier(0.33, 0.81, 0.55, 1.0);
   animation-iteration-count: 1;
+  animation-fill-mode: forwards;
 }
 
 @keyframes popupIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
+0% {
+  opacity: 0;
+}
+100% {
+  opacity: 1;
+}
 }
 
 @keyframes popupOut {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.9);
-  }
+0% {
+  opacity: 1;
+}
+100% {
+  opacity: 0;
+}
 }
 
 /* 中间标题区域 */
@@ -377,11 +375,6 @@ export default page;
   background-color: rgba(0, 0, 0, 0.55);
   justify-content: center;
   align-items: center;
-
-  /* ? 初始状态就等于动画起点，避免第一次闪现终态 */
-  opacity: 0;
-  transform: scale(0.9);
-  transform-origin: center center;
 }
 
 .modal {
@@ -481,11 +474,6 @@ export default page;
   background-color: rgba(0, 0, 0, 0.65);
   justify-content: center;
   align-items: center;
-
-  /* ? 同样处理，和菜单保持一致 */
-  opacity: 0;
-  transform: scale(0.9);
-  transform-origin: center center;
 }
 
 .confirm {
@@ -544,9 +532,6 @@ export default page;
   background-color: rgba(0, 0, 0, 0.65);
   justify-content: center;
   align-items: center;
-  opacity: 0;
-  transform: scale(0.9);
-  transform-origin: center center;
 }
 
 .detail {
@@ -637,6 +622,7 @@ export default page;
 .ime-header {
   width: 100%;
   height: 36px;
+  padding: 0 6px;
   flex-direction: row;
   justify-content: center;
   align-items: center;
@@ -644,41 +630,55 @@ export default page;
 }
 
 .ime-title {
+  width: 46%;
   color: #f2f2f2;
   font-size: 13px;
   font-weight: 700;
+  text-align: center;
+  lines: 1;
+  text-overflow: ellipsis;
 }
 
 .ime-close {
   position: absolute;
-  right: 12px;
-  top: 8px;
-  padding: 3px 7px;
-  border-radius: 12px;
+  right: 6px;
+  top: 7px;
+  width: 42px;
+  height: 22px;
+  padding: 0;
+  border-radius: 11px;
   background-color: #1a1a1a;
   border-width: 1px;
   border-color: #2a2a2a;
+  justify-content: center;
+  align-items: center;
 }
 
 .ime-close-text {
   color: #cccccc;
-  font-size: 11px;
+  font-size: 10px;
+  lines: 1;
 }
 
 .ime-confirm {
   position: absolute;
-  left: 12px;
-  top: 8px;
-  padding: 3px 7px;
-  border-radius: 12px;
+  left: 6px;
+  top: 7px;
+  width: 42px;
+  height: 22px;
+  padding: 0;
+  border-radius: 11px;
   background-color: #1f3323;
   border-width: 1px;
   border-color: #2d5a3a;
+  justify-content: center;
+  align-items: center;
 }
 
 .ime-confirm-text {
   color: #a7f3c3;
-  font-size: 11px;
+  font-size: 10px;
+  lines: 1;
 }
 
 .ime-preview {

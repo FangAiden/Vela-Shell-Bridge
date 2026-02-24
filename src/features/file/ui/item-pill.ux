@@ -1,5 +1,12 @@
 <template>
-  <div class="root" onclick="onButtonClick" onlongpress="onLongPress">
+  <div
+    class="root"
+    onclick="onButtonClick"
+    onlongpress="onLongPress"
+    ontouchstart="onTouchStart"
+    ontouchmove="onTouchMove"
+    ontouchend="onTouchEnd"
+  >
     <div class="image-container">
       <image class="image" src="{{ image }}" />
     </div>
@@ -11,6 +18,22 @@
   </div>
 </template>
 <script>
+const LONG_PRESS_MS = 420;
+const MOVE_CANCEL_PX = 12;
+
+function pickPoint(evt) {
+  const e = evt && evt.detail ? evt.detail : evt || {};
+  const t0 = e.changedTouches && e.changedTouches[0]
+    ? e.changedTouches[0]
+    : (e.touches && e.touches[0] ? e.touches[0] : e);
+  const x = Number(t0 && (t0.pageX != null ? t0.pageX : (t0.clientX != null ? t0.clientX : t0.x)));
+  const y = Number(t0 && (t0.pageY != null ? t0.pageY : (t0.clientY != null ? t0.clientY : t0.y)));
+  return {
+    x: isFinite(x) ? x : null,
+    y: isFinite(y) ? y : null,
+  };
+}
+
 export default {
   props: ["title", "image", "type", "info", "index"],
   data() {
@@ -22,17 +45,66 @@ export default {
       index: this.index,
     };
   },
+  onInit() {
+    this._pressTimer = 0;
+    this._pressStartX = null;
+    this._pressStartY = null;
+    this._didLongPress = false;
+  },
+  onDestroy() {
+    this.clearPressTimer();
+  },
+  onTouchStart(evt) {
+    this._didLongPress = false;
+    const p = pickPoint(evt);
+    this._pressStartX = p.x;
+    this._pressStartY = p.y;
+    this.clearPressTimer();
+    this._pressTimer = setTimeout(() => {
+      this._pressTimer = 0;
+      this._didLongPress = true;
+      this.emitLongPress();
+    }, LONG_PRESS_MS);
+  },
+  onTouchMove(evt) {
+    if (!this._pressTimer) return;
+    const p = pickPoint(evt);
+    if (p.x == null || p.y == null || this._pressStartX == null || this._pressStartY == null) return;
+    const dx = Math.abs(p.x - this._pressStartX);
+    const dy = Math.abs(p.y - this._pressStartY);
+    if (dx > MOVE_CANCEL_PX || dy > MOVE_CANCEL_PX) {
+      this.clearPressTimer();
+    }
+  },
+  onTouchEnd() {
+    this.clearPressTimer();
+  },
+  clearPressTimer() {
+    if (this._pressTimer) {
+      clearTimeout(this._pressTimer);
+      this._pressTimer = 0;
+    }
+  },
+  emitLongPress() {
+    this.$emit("longPress", {
+      index: this.index,
+      title: this.title,
+    });
+  },
   onButtonClick() {
+    if (this._didLongPress) {
+      this._didLongPress = false;
+      return;
+    }
     this.$emit("buttonClick", {
       index: this.index,
       title: this.title,
     });
   },
   onLongPress() {
-    this.$emit("longPress", {
-      index: this.index,
-      title: this.title,
-    });
+    this.clearPressTimer();
+    this._didLongPress = true;
+    this.emitLongPress();
   },
 };
 </script>
