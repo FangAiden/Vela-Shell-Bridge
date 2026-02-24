@@ -23,6 +23,7 @@ const SNAP_PROGRAMMATIC_MS = 180;
 const SWIPE_CLICK_GUARD_MS = 120;
 const BG_PREVIEW_SAMPLE_MS = 12;
 const BG_PREVIEW_MIN_MS = 220;
+const HOME_PRELOAD_KEEP_MS = 420;
 
 function toPositiveInt(v, fallback = 0) {
   const n = Math.round(Number(v));
@@ -106,6 +107,9 @@ export default createPage({
     screenScale: 1,
     bgWidthPx: DEFAULT_BG_SIZE.width,
     bgHeightPx: DEFAULT_BG_SIZE.height,
+    preloadVisible: true,
+    preloadBgList: [],
+    preloadCardList: [],
     pillBaseCardHeight: 380,
     pillBaseGap: 40,
   },
@@ -120,6 +124,11 @@ export default createPage({
     this._bgPreviewStartTs = 0;
     this._bgPreviewDurationMs = SNAP_PROGRAMMATIC_MS;
     this._suppressCardClickUntil = 0;
+    this._homePreloadDone = false;
+    this._preloadHideTimer = 0;
+    this.preloadBgList = this.bgList.map((it) => ({ id: it.id, src: it.src }));
+    this.preloadCardList = this.cards.map((it) => ({ id: it.id, src: it.image }));
+    this.preloadVisible = true;
     this.detectDeviceProfile();
   },
 
@@ -128,21 +137,29 @@ export default createPage({
     this.stopBgSwipePreview();
     this.resetSnapState();
     this._suppressCardClickUntil = 0;
+    this.startHomePreload();
     const scrollEl = this.$element("funcScroll");
+    const fallbackWidth = Math.max(0, Number(this.bgWidthPx) || 0);
     if (!scrollEl || typeof scrollEl.getScrollRect !== "function") {
-      this.pageWidth = 0;
+      this.pageWidth = this.screenShape === "pill-shaped" ? 0 : fallbackWidth;
       this.updateBgOpacityByScroll(this.currentScrollPos);
       return;
     }
     scrollEl.getScrollRect({
       success: ({ width }) => {
         if (this.cards.length > 0) {
-          this.pageWidth = width / this.cards.length;
+          const total = Number(width) || 0;
+          const page = total > 0 ? total / this.cards.length : 0;
+          if (this.screenShape !== "pill-shaped" && page <= 0) {
+            this.pageWidth = fallbackWidth;
+          } else {
+            this.pageWidth = page;
+          }
           this.updateBgOpacityByScroll(this.currentScrollPos);
         }
       },
       fail: () => {
-        this.pageWidth = 0;
+        this.pageWidth = this.screenShape === "pill-shaped" ? 0 : fallbackWidth;
         this.updateBgOpacityByScroll(this.currentScrollPos);
       },
     });
@@ -151,11 +168,13 @@ export default createPage({
   onHide() {
     this.stopBgSwipePreview();
     this.clearSnapTimer();
+    this.clearPreloadTimer();
   },
 
   onDestroy() {
     this.stopBgSwipePreview();
     this.clearSnapTimer();
+    this.clearPreloadTimer();
   },
 
   detectDeviceProfile() {
@@ -185,6 +204,30 @@ export default createPage({
     this.screenScale = getScaleByBucket(bucket);
     this.bgWidthPx = bgSize.width;
     this.bgHeightPx = bgSize.height;
+    if (shape !== "pill-shaped" && (!this.pageWidth || this.pageWidth <= 0)) {
+      this.pageWidth = bgSize.width;
+    }
+  },
+
+  clearPreloadTimer() {
+    if (this._preloadHideTimer) {
+      clearTimeout(this._preloadHideTimer);
+      this._preloadHideTimer = 0;
+    }
+  },
+
+  startHomePreload() {
+    if (this._homePreloadDone) {
+      this.preloadVisible = false;
+      return;
+    }
+    this.preloadVisible = true;
+    this.clearPreloadTimer();
+    this._preloadHideTimer = setTimeout(() => {
+      this._preloadHideTimer = 0;
+      this.preloadVisible = false;
+      this._homePreloadDone = true;
+    }, HOME_PRELOAD_KEEP_MS);
   },
 
   getPillPageStep() {

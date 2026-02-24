@@ -1,6 +1,7 @@
 import { sendIpcRequest } from "./ipc-client.js";
 
 const REQUEST_TIMEOUT = 1250;
+const SCAN_REQUEST_TIMEOUT = 6000;
 
 export function management(cmd, args = {}, options = {}) {
   if (!cmd || typeof cmd !== "string") return Promise.reject(new Error("cmd required"));
@@ -61,7 +62,9 @@ export async function setAllowlist(list, options = {}) {
 }
 
 export async function scanApps(options = {}) {
-  const resp = await management("scan_apps", {}, options);
+  const resp = await management("scan_apps", {}, {
+    timeoutMs: options.timeoutMs || SCAN_REQUEST_TIMEOUT,
+  });
   if (!resp || resp.ok !== true) throw new Error((resp && resp.message) || "scan_apps failed");
   const data = resp.data || {};
   const apps = data.apps;
@@ -69,7 +72,9 @@ export async function scanApps(options = {}) {
 }
 
 export async function scanAppsInfo(options = {}) {
-  const resp = await management("scan_apps", {}, options);
+  const resp = await management("scan_apps", {}, {
+    timeoutMs: options.timeoutMs || SCAN_REQUEST_TIMEOUT,
+  });
   if (!resp || resp.ok !== true) throw new Error((resp && resp.message) || "scan_apps failed");
   const data = resp.data || {};
   const apps = Array.isArray(data.apps) ? data.apps : [];

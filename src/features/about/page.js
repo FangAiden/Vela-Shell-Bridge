@@ -1,8 +1,13 @@
 ﻿import { createPage } from "../../app/page.js";
 import { refreshBasicInfo } from "./about-basic.js";
 import { refreshHardwareInfo } from "./about-shell.js";
+import suIpc from "../../services/su-daemon/index.js";
 
 const ABOUT_REFRESH_GAP_MS = 80;
+const DAEMON_PROBE_TIMEOUT_ENTER_MS = 650;
+const DAEMON_PROBE_TIMEOUT_REFRESH_MS = 900;
+// Debug switch: keep enter-mode basic collection, but skip it for manual full refresh.
+const DISABLE_BASIC_ON_FULL_REFRESH = true;
 
 function waitMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
@@ -139,6 +144,61 @@ export default createPage({
     else this.suStatusText = "Unknown";
   },
 
+  clearShellOnlyData(hintText) {
+    this.kernelText = "";
+    this.mountText = "";
+    this.mountRawText = "";
+    this.ipText = "";
+    this.ipRawText = "";
+    this.processText = "";
+
+    this.cpuModelText = "";
+    this.cpuMetaText = "";
+    this.cpuInfoRawText = "";
+    this.memUsedText = "";
+    this.memTotalText = "";
+    this.memUsedPercent = 0;
+    this.memSubText = "";
+    this.dataUsedText = "";
+    this.dataTotalText = "";
+    this.dataUsedPercent = 0;
+    this.dataSubText = "";
+
+    this.shellCaps = [];
+    this.shellCapsText = hintText || "";
+  },
+
+  async probeDaemon(options) {
+    const opt = options && typeof options === "object" ? options : {};
+    const timeoutMs = (typeof opt.timeoutMs === "number" && opt.timeoutMs > 0)
+      ? Math.floor(opt.timeoutMs)
+      : DAEMON_PROBE_TIMEOUT_ENTER_MS;
+
+    this.suStatus = "checking";
+    this.suError = "";
+    this.updateSuText();
+
+    try {
+      // Any structured response means daemon is reachable.
+      const resp = await suIpc.management("get_settings", {}, { timeoutMs });
+      if (resp && typeof resp === "object") {
+        this.suStatus = "up";
+        this.suError = "";
+        this.updateSuText();
+        return true;
+      }
+      this.suStatus = "down";
+      this.suError = "empty response";
+      this.updateSuText();
+      return false;
+    } catch (e) {
+      this.suStatus = "down";
+      this.suError = e && e.message ? String(e.message) : String(e || "daemon unavailable");
+      this.updateSuText();
+      return false;
+    }
+  },
+
   openDetail(a, b) {
     try {
       let title = "";
@@ -206,25 +266,40 @@ export default createPage({
       ? arg
       : (arg && typeof arg === "object" && typeof arg.mode === "string")
         ? arg.mode
-        : "safe";
+        : "full";
     const isEnterMode = mode === "enter";
     const isSafeMode = isEnterMode || mode === "safe";
+    const shouldRefreshBasic = !(DISABLE_BASIC_ON_FULL_REFRESH && mode === "full");
     if (this.isRefreshingAll) return;
     this.isRefreshingAll = true;
 
     try {
-      await refreshBasicInfo.call(this, {
-        mode,
-        collectLocation: !isSafeMode,
-        collectSensors: !isSafeMode
+      const daemonUp = await this.probeDaemon({
+        timeoutMs: isEnterMode ? DAEMON_PROBE_TIMEOUT_ENTER_MS : DAEMON_PROBE_TIMEOUT_REFRESH_MS
       });
+
+      if (shouldRefreshBasic) {
+        await refreshBasicInfo.call(this, {
+          mode,
+          collectLocation: !isSafeMode,
+          collectSensors: !isSafeMode
+        });
+      }
+
       if (isSafeMode) {
-        this.suStatus = "unknown";
-        this.suError = "";
-        this.updateSuText();
-        if (!this.shellCapsText) this.shellCapsText = "点击刷新后加载";
+        if (daemonUp) {
+          if (!this.shellCapsText) this.shellCapsText = "守护已运行，点击刷新加载 Shell 详情";
+        } else {
+          this.clearShellOnlyData("守护未运行，仅显示快应用信息");
+        }
         return;
       }
+
+      if (!daemonUp) {
+        this.clearShellOnlyData("守护未运行，无法读取 Shell 详情");
+        return;
+      }
+
       await waitMs(ABOUT_REFRESH_GAP_MS);
       await refreshHardwareInfo.call(this, { mode });
     } finally {

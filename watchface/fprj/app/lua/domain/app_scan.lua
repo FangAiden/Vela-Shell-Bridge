@@ -5,8 +5,16 @@ local str    = require("util.str")
 
 local M = {}
 
-local APPS_JSON_MAX_DEPTH = 5
+local APPS_JSON_MAX_DEPTH = 10
 local apps_json_path_cache = nil
+local APP_DIR_FIND_MAX_DEPTH = 10
+local FALLBACK_FIND_MAX_DEPTH = 8
+local app_dir_cache = {}
+local app_dir_cache_key = ""
+local ADMIN_DIR_FIND_MAX_DEPTH = 12
+local admin_dir_cache = nil
+local admin_root_cache = nil
+local admin_cache_key = ""
 
 local function safe_str(v)
     return str.safe_str(v)
@@ -75,6 +83,69 @@ local function parse_lines(text)
         end
     end
     return out
+end
+
+local function starts_with(s, prefix)
+    if type(s) ~= "string" or type(prefix) ~= "string" then
+        return false
+    end
+    return s:sub(1, #prefix) == prefix
+end
+
+local function dir_name(path)
+    if type(path) ~= "string" or path == "" then
+        return ""
+    end
+    local p = path:gsub("/+$", "")
+    return p:match("([^/]+)$") or ""
+end
+
+local function parent_dir(path)
+    if type(path) ~= "string" then return "" end
+    return path:match("^(.*)/[^/]+$") or ""
+end
+
+local function has_manifest(dir)
+    if type(dir) ~= "string" or dir == "" then
+        return false
+    end
+    return fs.file_exists and fs.file_exists(dir .. "/manifest.json") or false
+end
+
+local function has_meta_inf(dir)
+    if type(dir) ~= "string" or dir == "" then
+        return false
+    end
+    return fs.is_dir and fs.is_dir(dir .. "/META-INF") or false
+end
+
+local function current_app_base_key()
+    local list = as_list(config.APP_INSTALL_BASE)
+    local parts = {}
+    for _, v in ipairs(list) do
+        local s = trim(v)
+        if s ~= "" then
+            parts[#parts + 1] = s
+        end
+    end
+    return table.concat(parts, "|")
+end
+
+local function ensure_app_dir_cache_fresh()
+    local key = current_app_base_key()
+    if key ~= app_dir_cache_key then
+        app_dir_cache_key = key
+        app_dir_cache = {}
+    end
+end
+
+local function ensure_admin_cache_fresh()
+    local key = trim(config.ADMIN_APP_ID or "")
+    if key ~= admin_cache_key then
+        admin_cache_key = key
+        admin_dir_cache = nil
+        admin_root_cache = nil
+    end
 end
 
 function M.scan_all_apps(base_dir)
@@ -232,7 +303,118 @@ local function resolve_icon_abs(app_dir, icon_rel)
     return ""
 end
 
+local function score_app_dir(path, pkg, bases)
+    if type(path) ~= "string" or path == "" then
+        return -1000000
+    end
+    local score = 0
+    local suffix = "/" .. tostring(pkg or "")
+    if suffix ~= "/" and path:sub(-#suffix) == suffix then
+        score = score + 100
+    end
+
+    for i, base in ipairs(bases or {}) do
+        local b = trim(base)
+        if b ~= "" then
+            if path == (b .. "/" .. pkg) then
+                score = score + 1000 - i
+            elseif starts_with(path, b .. "/") then
+                score = score + 500 - i
+            end
+        end
+    end
+    return score
+end
+
+local function find_pkg_dirs_by_name(pkg)
+    local tmp = config.TMP_DIR
+        .. "/scan_pkg_dir_"
+        .. tostring(os.time())
+        .. "_"
+        .. tostring(math.random(1000, 9999))
+        .. ".txt"
+    local cmd = "find /data -maxdepth "
+        .. tostring(APP_DIR_FIND_MAX_DEPTH)
+        .. " -type d -name "
+        .. str.sh_quote(pkg)
+        .. " 2>/dev/null > "
+        .. str.sh_quote(tmp)
+    os.execute(cmd)
+    local lines = parse_lines(fs.read_file(tmp) or "")
+    fs.remove_file(tmp)
+    return lines
+end
+
+local function find_admin_pkg_dir()
+    ensure_admin_cache_fresh()
+    if admin_dir_cache ~= nil then
+        if admin_dir_cache == false then
+            return nil, nil
+        end
+        if has_meta_inf(admin_dir_cache) and fs.is_dir and fs.is_dir(admin_dir_cache) then
+            return admin_dir_cache, admin_root_cache
+        end
+        admin_dir_cache = nil
+        admin_root_cache = nil
+    end
+
+    local admin_pkg = trim(config.ADMIN_APP_ID or "")
+    if admin_pkg == "" then
+        admin_dir_cache = false
+        return nil, nil
+    end
+
+    local tmp = config.TMP_DIR
+        .. "/scan_admin_pkg_"
+        .. tostring(os.time())
+        .. "_"
+        .. tostring(math.random(1000, 9999))
+        .. ".txt"
+    local cmd = "find /data -maxdepth "
+        .. tostring(ADMIN_DIR_FIND_MAX_DEPTH)
+        .. " -type d -name "
+        .. str.sh_quote(admin_pkg)
+        .. " 2>/dev/null > "
+        .. str.sh_quote(tmp)
+    os.execute(cmd)
+    local lines = parse_lines(fs.read_file(tmp) or "")
+    fs.remove_file(tmp)
+
+    local pick = nil
+    for _, dir in ipairs(lines) do
+        local d = trim(dir)
+        if d ~= "" and has_meta_inf(d) then
+            pick = d
+            break
+        end
+    end
+
+    if not pick then
+        admin_dir_cache = false
+        return nil, nil
+    end
+
+    local root = parent_dir(pick)
+    if root == "" then
+        admin_dir_cache = false
+        return nil, nil
+    end
+
+    admin_dir_cache = pick
+    admin_root_cache = root
+    return pick, root
+end
+
 local function resolve_app_dir(pkg)
+    ensure_app_dir_cache_fresh()
+    if app_dir_cache[pkg] ~= nil then
+        local cached = app_dir_cache[pkg]
+        if cached == false then
+            return nil, nil
+        end
+        return cached, parent_dir(cached)
+    end
+
     local bases = as_list(config.APP_INSTALL_BASE)
     if #bases == 0 then
         bases = { "/data/app", "/data/quickapp/app", "/data/app/quickapp" }
@@ -251,13 +433,33 @@ local function resolve_app_dir(pkg)
         if b ~= "" then
             for _, suffix in ipairs(suffixes) do
                 local dir = b .. suffix .. "/" .. pkg
-                if fs.is_dir and fs.is_dir(dir) then
+                if fs.is_dir and fs.is_dir(dir) and has_manifest(dir) then
+                    app_dir_cache[pkg] = dir
                     return dir, b
                 end
             end
         end
     end
 
+    local found = find_pkg_dirs_by_name(pkg)
+    local best_dir = nil
+    local best_score = -1000000
+    for _, dir in ipairs(found) do
+        local d = trim(dir)
+        if d ~= "" and fs.is_dir and fs.is_dir(d) and has_manifest(d) and dir_name(d) == pkg then
+            local s = score_app_dir(d, pkg, bases)
+            if s > best_score then
+                best_score = s
+                best_dir = d
+            end
+        end
+    end
+    if best_dir then
+        app_dir_cache[pkg] = best_dir
+        return best_dir, parent_dir(best_dir)
+    end
+
+    app_dir_cache[pkg] = false
     return nil, nil
 end
 
@@ -307,6 +509,29 @@ local function read_apps_json_file(path)
     return obj, list
 end
 
+local function apps_list_has_package(list, app_id)
+    local target = trim(app_id)
+    if target == "" or type(list) ~= "table" then return false end
+
+    local n = #list
+    if n > 0 then
+        for i = 1, n do
+            local it = list[i]
+            if type(it) == "table" and pick_app_id(it) == target then
+                return true
+            end
+        end
+        return false
+    end
+
+    for _, it in pairs(list) do
+        if type(it) == "table" and pick_app_id(it) == target then
+            return true
+        end
+    end
+    return false
+end
+
 local function iter_app_items(list, visitor)
     if type(list) ~= "table" or type(visitor) ~= "function" then
         return
@@ -334,9 +559,47 @@ local function find_apps_json_under_data()
     return lines
 end
 
+local function find_manifest_dirs_under(root, max_depth)
+    local out = {}
+    local base = trim(root)
+    if base == "" then return out end
+    if not (fs.is_dir and fs.is_dir(base)) then return out end
+
+    local tmp = config.TMP_DIR
+        .. "/scan_manifest_"
+        .. tostring(os.time())
+        .. "_"
+        .. tostring(math.random(1000, 9999))
+        .. ".txt"
+    local cmd = "find "
+        .. str.sh_quote(base)
+        .. " -maxdepth "
+        .. tostring(max_depth or FALLBACK_FIND_MAX_DEPTH)
+        .. " -type f -name manifest.json 2>/dev/null > "
+        .. str.sh_quote(tmp)
+    os.execute(cmd)
+    local files = parse_lines(fs.read_file(tmp) or "")
+    fs.remove_file(tmp)
+
+    local seen = {}
+    for _, fp in ipairs(files) do
+        local d = parent_dir(fp)
+        if d ~= "" and not seen[d] then
+            seen[d] = true
+            out[#out + 1] = d
+        end
+    end
+    return out
+end
+
 local function resolve_apps_json_path()
+    local admin_pkg = trim(config.ADMIN_APP_ID or "")
     if apps_json_path_cache and fs.file_exists and fs.file_exists(apps_json_path_cache) then
-        return apps_json_path_cache
+        local _, list = read_apps_json_file(apps_json_path_cache)
+        if list and (admin_pkg == "" or apps_list_has_package(list, admin_pkg)) then
+            return apps_json_path_cache
+        end
+        apps_json_path_cache = nil
     end
 
     local candidates = {}
@@ -349,13 +612,30 @@ local function resolve_apps_json_path()
     append_unique(candidates, seen, "/data/quickapp/apps.json")
     append_unique(candidates, seen, "/data/system/apps.json")
     append_unique(candidates, seen, "/data/quickapp/system/apps.json")
+    local base = trim(config.QUICKAPP_BASE or "")
+    if base ~= "" then
+        append_unique(candidates, seen, base .. "/apps.json")
+        local p = parent_dir(base)
+        if p ~= "" then
+            append_unique(candidates, seen, p .. "/apps.json")
+            local pp = parent_dir(p)
+            if pp ~= "" then
+                append_unique(candidates, seen, pp .. "/apps.json")
+            end
+        end
+    end
+
+    local fallback_valid = nil
 
     for _, p in ipairs(candidates) do
         if fs.file_exists and fs.file_exists(p) then
             local _, list = read_apps_json_file(p)
             if list then
-                apps_json_path_cache = p
-                return p
+                if admin_pkg == "" or apps_list_has_package(list, admin_pkg) then
+                    apps_json_path_cache = p
+                    return p
+                end
+                if not fallback_valid then fallback_valid = p end
             end
         end
     end
@@ -364,9 +644,17 @@ local function resolve_apps_json_path()
     for _, p in ipairs(found) do
         local _, list = read_apps_json_file(p)
         if list then
-            apps_json_path_cache = p
-            return p
+            if admin_pkg == "" or apps_list_has_package(list, admin_pkg) then
+                apps_json_path_cache = p
+                return p
+            end
+            if not fallback_valid then fallback_valid = p end
         end
+    end
+
+    if admin_pkg == "" and fallback_valid then
+        apps_json_path_cache = fallback_valid
+        return fallback_valid
     end
 
     return nil
@@ -385,24 +673,16 @@ local function scan_install_dirs_fallback()
     for _, base in ipairs(bases) do
         local b = trim(base)
         if b ~= "" then
-            local entries = fs.list_files(b)
-            if entries and #entries > 0 then
-                for _, raw_name in ipairs(entries) do
-                    local name = raw_name
-                    if type(name) == "string" and name:sub(-1) == "/" then
-                        name = name:sub(1, -2)
-                    end
-                    if is_valid_app_id(name) then
-                        local app_dir = b .. "/" .. name
-                        if fs.is_dir and fs.is_dir(app_dir) and not seen[name] then
-                            seen[name] = true
-                            out_apps[#out_apps + 1] = name
-                            meta[name] = {
-                                name = "",
-                                icon = resolve_icon_abs(app_dir, ""),
-                            }
-                        end
-                    end
+            local manifest_dirs = find_manifest_dirs_under(b, FALLBACK_FIND_MAX_DEPTH)
+            for _, app_dir in ipairs(manifest_dirs) do
+                local name = dir_name(app_dir)
+                if is_valid_app_id(name) and has_manifest(app_dir) and not seen[name] then
+                    seen[name] = true
+                    out_apps[#out_apps + 1] = name
+                    meta[name] = {
+                        name = "",
+                        icon = "",
+                    }
                 end
             end
         end
@@ -441,6 +721,7 @@ function M.scan_installed_apps()
 
     local apps_json_path = resolve_apps_json_path()
     local _, list = read_apps_json_file(apps_json_path)
+    local _, admin_root = find_admin_pkg_dir()
 
     if type(list) == "table" then
         iter_app_items(list, function(it)
@@ -452,14 +733,22 @@ function M.scan_installed_apps()
                 end
 
                 if pkg ~= "" then
-                    local app_dir = resolve_app_dir(pkg)
                     local icon_raw = pick_icon_raw(it)
                     local icon = ""
-                    if app_dir then
-                        icon = resolve_icon_abs(app_dir, icon_raw)
+                    if icon_raw ~= "" and admin_root and admin_root ~= "" then
+                        local app_dir = admin_root .. "/" .. pkg
+                        if fs.is_dir and fs.is_dir(app_dir) then
+                            icon = resolve_icon_abs(app_dir, icon_raw)
+                            if icon == "" then
+                                icon = resolve_icon_abs(app_dir, "")
+                            end
+                        end
                     end
                     if icon == "" then
-                        icon = icon_raw
+                        local app_dir2 = resolve_app_dir(pkg)
+                        if app_dir2 then
+                            icon = resolve_icon_abs(app_dir2, icon_raw)
+                        end
                     end
                     meta[pkg] = {
                         name = pick_app_name(it),

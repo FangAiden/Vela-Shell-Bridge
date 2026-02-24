@@ -1,4 +1,4 @@
-<import name="time-bar" src="../../ui/components/timeBar"></import>
+<import name="time-bar" src="../../../ui/components/timeBar"></import>
 
 <template>
   <div class="root">
@@ -22,7 +22,7 @@
 
         <!-- 操作区 -->
         <div class="action-row">
-          <div class="action-btn action-btn-green" onclick="refreshAll">
+          <div class="action-btn action-btn-green" onclick="refreshAll('full')">
             <text class="action-text">{{ isRefreshingAll ? '刷新中...' : '刷新' }}</text>
           </div>
         </div>

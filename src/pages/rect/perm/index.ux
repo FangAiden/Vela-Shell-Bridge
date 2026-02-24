@@ -1,15 +1,21 @@
-<import name="time-bar" src="../../../ui/components/timeBar"></import>
+﻿<import name="time-bar" src="../../../ui/components/timeBar"></import>
 <import name="item" src="../../../features/perm/ui/item-rect"></import>
 
 <template>
 	<div class="root">
 		<stack class="stack">
-			<!-- ? 结构不变，只在 class 里拼上 animClass -->
+			<!-- ? 缁撴瀯涓嶅彉锛屽彧鍦?class 閲屾嫾涓?animClass -->
 			<scroll class="box {{ animClass }}" scroll-y="true" bounces="true">
 				<div class="header">
 					<image class="shield-icon" src="/resources/image/perm.png"></image>
-					<text class="title">授权管理</text>
-					<text class="subtitle">管理应用执行权限</text>
+					<text class="title lines-1">授权管理</text>
+					<text class="subtitle lines-1">管理应用执行权限</text>
+					<text class="scan-hint lines-1">{{ scanHint }}</text>
+					<div class="scan-action">
+						<div class="scan-btn {{ isLoading ? 'scan-btn-busy' : '' }}" onclick="onClickScan">
+							<text class="scan-btn-text lines-1">{{ isLoading ? '扫描中...' : '扫描' }}</text>
+						</div>
+					</div>
 				</div>
 
 				<div class="item-container" for="{{ permList }}" tid="index">
@@ -26,7 +32,7 @@
 				<div class="blank"></div>
 			</scroll>
 
-			<!-- time-bar 结构位置保持不变 -->
+			<!-- time-bar 缁撴瀯浣嶇疆淇濇寔涓嶅彉 -->
 			<time-bar mode="rect" />
 		</stack>
 	</div>
@@ -52,9 +58,9 @@ export default page;
 	align-items: center;
 }
 
-/* ? 给 box 加上初始缩放和透明度，作为动画起点 */
+/* ? 缁?box 鍔犱笂鍒濆缂╂斁鍜岄€忔槑搴︼紝浣滀负鍔ㄧ敾璧风偣 */
 .box {
-	/* 原有的布局属性保留在上面那段 .box,stack 已经设置了 flex-direction 等 */
+	/* 鍘熸湁鐨勫竷灞€灞炴€т繚鐣欏湪涓婇潰閭ｆ .box,stack 宸茬粡璁剧疆浜?flex-direction 绛?*/
 	opacity: 0;
 	transform: scale(0.8);
 	transform-origin: center center;
@@ -65,7 +71,7 @@ export default page;
 	transform: scale(1);
 }
 
-/* 进入动画：中心放大 + 淡入 */
+/* 杩涘叆鍔ㄧ敾锛氫腑蹇冩斁澶?+ 娣″叆 */
 .page-enter {
   animation-name: pageFadeIn;
   animation-duration: 140ms;
@@ -73,7 +79,7 @@ export default page;
   animation-iteration-count: 1;
   transform: scale(1);
 }
-/* 退出动画：中心缩小 + 淡出 */
+/* 閫€鍑哄姩鐢伙細涓績缂╁皬 + 娣″嚭 */
 .page-leave {
   animation-name: pageFadeOut;
   animation-duration: 120ms;
@@ -81,9 +87,9 @@ export default page;
   animation-iteration-count: 1;
   transform: scale(1);
 }
-/* 进入关键帧 */
-/* 退出关键帧 */
-/* 中间标题区域 */
+/* 杩涘叆鍏抽敭甯?*/
+/* 閫€鍑哄叧閿抚 */
+/* 涓棿鏍囬鍖哄煙 */
 .header {
 	margin-top: 40px;
 	flex-direction: column;
@@ -111,6 +117,42 @@ export default page;
 	color: #a0a0a0;
 }
 
+.scan-hint {
+	font-size: 14px;
+	color: #8ae6a9;
+	margin-top: 4px;
+}
+
+.scan-action {
+	width: 100%;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	margin-top: 8px;
+}
+
+.scan-btn {
+	width: 136px;
+	height: 40px;
+	border-radius: 20px;
+	background-color: #1f3323;
+	border-width: 1px;
+	border-color: #2d5a3a;
+	justify-content: center;
+	align-items: center;
+}
+
+.scan-btn-busy {
+	opacity: 0.7;
+}
+
+.scan-btn-text {
+	font-size: 16px;
+	font-weight: 700;
+	color: #eafff2;
+	text-align: center;
+}
+
 .blank {
 	height: 120px;
 }
@@ -134,4 +176,10 @@ export default page;
     opacity: 0;
   }
 }
-</style>
+.lines-1 {
+	lines: 1;
+	text-overflow: ellipsis;
+}
+
+
+

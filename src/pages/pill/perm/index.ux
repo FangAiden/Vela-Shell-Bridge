@@ -1,4 +1,4 @@
-<import name="time-bar" src="../../../ui/components/timeBar"></import>
+﻿<import name="time-bar" src="../../../ui/components/timeBar"></import>
 <import name="item" src="../../../features/perm/ui/item-pill"></import>
 
 <template>
@@ -9,6 +9,12 @@
 					<image class="shield-icon" src="/resources/image/perm.png"></image>
 					<text class="title lines-1">授权管理</text>
 					<text class="subtitle lines-1">管理应用执行权限</text>
+					<text class="scan-hint lines-1">{{ scanHint }}</text>
+					<div class="scan-action">
+						<div class="scan-btn {{ isLoading ? 'scan-btn-busy' : '' }}" onclick="onClickScan">
+							<text class="scan-btn-text lines-1">{{ isLoading ? '扫描中...' : '扫描' }}</text>
+						</div>
+					</div>
 				</div>
 
 				<div class="item-container" for="{{ permList }}" tid="index">
@@ -109,6 +115,42 @@ export default page;
 	margin-top: 2px;
 }
 
+.scan-hint {
+	margin-top: 4px;
+	font-size: 10px;
+	color: #8ae6a9;
+}
+
+.scan-action {
+	width: 100%;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	margin-top: 6px;
+}
+
+.scan-btn {
+	width: 88px;
+	height: 28px;
+	border-radius: 14px;
+	background-color: #1f3323;
+	border-width: 1px;
+	border-color: #2d5a3a;
+	justify-content: center;
+	align-items: center;
+}
+
+.scan-btn-busy {
+	opacity: 0.7;
+}
+
+.scan-btn-text {
+	font-size: 11px;
+	font-weight: 700;
+	color: #eafff2;
+	text-align: center;
+}
+
 .blank {
 	height: 100px;
 }
@@ -138,3 +180,5 @@ export default page;
   }
 }
 </style>
+
+

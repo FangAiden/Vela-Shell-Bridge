@@ -9,6 +9,60 @@ const DEFAULT_QUICKAPP_ABS_ROOT = "/data/files/";
 const DEFAULT_ADMIN_APP_ID = "com.vela.su.aigik";
 const DEFAULT_ADMIN_FILES_DIR = `/data/files/${DEFAULT_ADMIN_APP_ID}/`;
 
+function setHint(vm, message) {
+  if (vm && typeof vm === "object") {
+    vm.scanHint = String(message || "");
+  }
+}
+
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error(timeoutMessage || `Timeout ${timeoutMs}ms`));
+    }, timeoutMs);
+    Promise.resolve(promise)
+      .then((ret) => {
+        if (done) return;
+        done = true;
+        clearTimeout(t);
+        resolve(ret);
+      })
+      .catch((err) => {
+        if (done) return;
+        done = true;
+        clearTimeout(t);
+        reject(err);
+      });
+  });
+}
+
+function notify(vm, message, duration = 1000) {
+  const msg = String(message || "");
+  setHint(vm, msg);
+  try {
+    prompt.showToast({
+      message: msg,
+      duration,
+      success: () => {},
+      fail: () => {},
+      complete: () => {},
+    });
+  } catch (_) {}
+}
+
+function formatScanError(err) {
+  const raw = err && err.message ? String(err.message) : "";
+  const s = raw.toLowerCase();
+  if (s.includes("timeout")) return "扫描超时，请先点表盘 Scan 再重试";
+  if (s.includes("no_permission")) return "扫描失败：守护权限不足";
+  if (s.includes("write failed") || s.includes("read failed")) return "扫描失败：IPC 文件异常";
+  if (raw) return `扫描失败：${raw}`;
+  return "扫描失败";
+}
+
 function normalizeAbsBase(p) {
   const s = String(p == null ? "" : p).trim();
   if (!s) return DEFAULT_QUICKAPP_ABS_ROOT;
@@ -96,6 +150,7 @@ export default createPage({
     selfAppId: "",
     quickappAbsRoot: DEFAULT_QUICKAPP_ABS_ROOT,
     adminFilesDirAbs: DEFAULT_ADMIN_FILES_DIR,
+    scanHint: "等待扫描...",
     isLoading: false,
     isUpdating: false,
   },
@@ -113,6 +168,15 @@ export default createPage({
   },
 
   async onShow() {
+    if (Array.isArray(this.permList) && this.permList.length) {
+      this.scanHint = `已加载 ${this.permList.length} 个应用，点扫描可刷新`;
+      return;
+    }
+    this.scanHint = "点击扫描按钮开始";
+  },
+
+  async onClickScan() {
+    if (this.isLoading) return;
     await this.refresh();
   },
 
@@ -126,16 +190,26 @@ export default createPage({
   async getSelfAppId() {
     if (this.selfAppId) return this.selfAppId;
     const pkg = await new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(v || "");
+      };
+      const timer = setTimeout(() => {
+        finish(DEFAULT_ADMIN_APP_ID);
+      }, 900);
       try {
         app.getInfo({
-          success: (info) => resolve((info && (info.packageName || info.package)) || ""),
-          fail: () => resolve(""),
+          success: (info) => finish((info && (info.packageName || info.package)) || DEFAULT_ADMIN_APP_ID),
+          fail: () => finish(DEFAULT_ADMIN_APP_ID),
         });
       } catch (_) {
-        resolve("");
+        finish(DEFAULT_ADMIN_APP_ID);
       }
     });
-    this.selfAppId = pkg || "";
+    this.selfAppId = pkg || DEFAULT_ADMIN_APP_ID;
     return this.selfAppId;
   },
 
@@ -200,15 +274,14 @@ export default createPage({
     const out = {};
     if (!Array.isArray(appIds) || !appIds.length) return out;
     if (!iconMap || typeof iconMap !== "object") return out;
-
-    for (let i = 0; i < appIds.length; i++) {
-      const appId = appIds[i];
+    const tasks = appIds.map(async (appId) => {
       const iconFile = appId && iconMap[appId] ? String(iconMap[appId]) : "";
-      if (!appId || !iconFile) continue;
+      if (!appId || !iconFile) return;
       const uri = `internal://files/perm_icons/${appId}/${iconFile}`;
       const meta = await fileGetMeta(uri, 800);
       if (meta && meta.uri) out[appId] = String(meta.uri);
-    }
+    });
+    await Promise.all(tasks);
 
     return out;
   },
@@ -217,15 +290,25 @@ export default createPage({
     if (this.isLoading) return;
     this.isLoading = true;
     try {
+      setHint(this, "读取应用信息...");
       const selfId = await this.getSelfAppId();
 
-      const [env, scan, allowlist, policies, logs] = await Promise.all([
-        suIpc.getEnv().catch(() => ({})),
-        suIpc.scanAppsInfo(),
-        suIpc.getAllowlist(),
-        suIpc.getPolicies(),
-        suIpc.getLogs(),
+      setHint(this, "读取权限配置...");
+      const [env, allowlist, policies, logs] = await Promise.all([
+        withTimeout(suIpc.getEnv().catch(() => ({})), 2200, "读取环境超时").catch(() => ({})),
+        withTimeout(suIpc.getAllowlist(), 2200, "读取白名单超时").catch(() => []),
+        withTimeout(suIpc.getPolicies(), 2200, "读取策略超时").catch(() => ({})),
+        withTimeout(suIpc.getLogs(), 2200, "读取日志超时").catch(() => ({})),
       ]);
+      let scan = { apps: [], meta: {} };
+      try {
+        setHint(this, "扫描应用列表...");
+        scan = await withTimeout(suIpc.scanAppsInfo(), 7000, "扫描超时");
+      } catch (scanErr) {
+        this.permList = [];
+        notify(this, formatScanError(scanErr), 1200);
+        return;
+      }
 
       const root = env && (env.quickapp_root || env.quickapp_base);
       const adminDir = env && env.admin_files_dir;
@@ -245,7 +328,18 @@ export default createPage({
       this.stats = logs && logs.stats ? logs.stats : {};
       this.appMeta = meta || {};
 
-      const appIds = (Array.isArray(apps) ? apps : []).filter((id) => id && id !== selfId);
+      const rawAppIds = Array.isArray(apps) ? apps : [];
+      const appIds = rawAppIds.filter((id) => id && id !== selfId);
+      if (!appIds.length) {
+        this.permList = [];
+        if (!rawAppIds.length) {
+          notify(this, "扫描完成：未发现应用，请先点表盘 Scan", 1200);
+        } else {
+          notify(this, "扫描完成：仅发现授权管理自身包", 1000);
+        }
+        return;
+      }
+      setHint(this, "应用已扫描，加载图标...");
       const iconMap = await this.prepareIcons(
         appIds,
         this.appMeta,
@@ -286,11 +380,9 @@ export default createPage({
         });
 
       this.permList = list;
+      notify(this, `扫描完成：${list.length} 个应用`, 900);
     } catch (e) {
-      prompt.showToast({
-        message: e && e.message ? e.message : "加载失败",
-        duration: 900,
-      });
+      notify(this, e && e.message ? e.message : "加载失败", 900);
     } finally {
       this.isLoading = false;
     }
@@ -303,6 +395,46 @@ export default createPage({
     if (!appId) return;
 
     this.isUpdating = true;
+    const prevAllow = Array.isArray(this.allowlist) ? this.allowlist.slice() : [];
+    const prevPolicies = this.policies && typeof this.policies === "object"
+      ? Object.assign({}, this.policies)
+      : {};
+    const prevList = Array.isArray(this.permList)
+      ? this.permList.map((it) => (it && typeof it === "object" ? Object.assign({}, it) : it))
+      : [];
+
+    const sortList = (list) =>
+      list.sort((a, b) => {
+        if (!!a.checked !== !!b.checked) return a.checked ? -1 : 1;
+        const ca = parseInt(a && a.count, 10) || 0;
+        const cb = parseInt(b && b.count, 10) || 0;
+        if (ca !== cb) return cb - ca;
+        return String(a && a.index).localeCompare(String(b && b.index));
+      });
+
+    const applyLocalSwitch = (checked) => {
+      const allowSet = new Set(Array.isArray(this.allowlist) ? this.allowlist : []);
+      if (checked) allowSet.add(appId);
+      else allowSet.delete(appId);
+      this.allowlist = Array.from(allowSet);
+
+      const nextPolicies =
+        this.policies && typeof this.policies === "object" ? Object.assign({}, this.policies) : {};
+      nextPolicies[appId] = Object.assign({}, nextPolicies[appId] || {}, {
+        policy: checked ? "allow" : "deny",
+      });
+      this.policies = nextPolicies;
+
+      const nextList = Array.isArray(this.permList)
+        ? this.permList.map((it) => {
+            if (!it || typeof it !== "object") return it;
+            if (String(it.index) !== String(appId)) return it;
+            return Object.assign({}, it, { checked: !!checked });
+          })
+        : [];
+      this.permList = sortList(nextList);
+    };
+
     try {
       const currentAllow = Array.isArray(this.allowlist) ? this.allowlist.slice() : [];
       const allowSet = new Set(currentAllow);
@@ -317,18 +449,13 @@ export default createPage({
         await suIpc.setAllowlist(Array.from(allowSet));
       }
 
-      prompt.showToast({
-        message: enabled ? "已授权" : "已取消授权",
-        duration: 700,
-      });
-
-      await this.refresh();
+      applyLocalSwitch(enabled);
+      notify(this, enabled ? "已授权" : "已取消授权", 700);
     } catch (e) {
-      prompt.showToast({
-        message: e && e.message ? e.message : "操作失败",
-        duration: 900,
-      });
-      await this.refresh();
+      this.allowlist = prevAllow;
+      this.policies = prevPolicies;
+      this.permList = prevList;
+      notify(this, e && e.message ? e.message : "操作失败", 900);
     } finally {
       this.isUpdating = false;
     }
