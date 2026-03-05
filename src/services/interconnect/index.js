@@ -36,6 +36,38 @@ function safeStr(v) {
   return String(v);
 }
 
+function parseInterconnectError(data, code, fallback) {
+  const out = {
+    code: 0,
+    message: safeStr(fallback || ""),
+  };
+  const codeNum = Number(code);
+  if (isFinite(codeNum) && codeNum !== 0) out.code = codeNum;
+
+  if (data && typeof data === "object") {
+    const c = Number(data.code);
+    if (isFinite(c) && c !== 0) out.code = c;
+
+    const d = safeStr(data.data).trim();
+    if (d) out.message = d;
+    else {
+      const m = safeStr(data.message).trim();
+      if (m) out.message = m;
+    }
+  } else {
+    const s = safeStr(data).trim();
+    if (s) out.message = s;
+  }
+  return out;
+}
+
+function recordLastError(data, code, fallback) {
+  const err = parseInterconnectError(data, code, fallback);
+  STATE.lastErrorAt = Date.now();
+  STATE.lastErrorCode = err.code;
+  STATE.lastErrorMessage = err.message || safeStr(fallback || "");
+}
+
 function isToken4(v) {
   return /^\d{4}$/.test(safeStr(v).trim());
 }
@@ -107,21 +139,37 @@ function sendReply(payload) {
   if (!conn) return;
   const safe = sanitizeReply(payload);
   const text = JSON.stringify(safe);
-  try {
-    conn.send({
-      data: text,
-      success() {},
-      fail(data) {
-        STATE.lastErrorAt = Date.now();
-        STATE.lastErrorCode = data && data.code ? data.code : 0;
-        STATE.lastErrorMessage = data && data.data ? safeStr(data.data) : "send failed";
-      },
-    });
-  } catch (e) {
-    STATE.lastErrorAt = Date.now();
-    STATE.lastErrorCode = 0;
-    STATE.lastErrorMessage = e && e.message ? e.message : "send throw";
-  }
+
+  let triedFallback = false;
+  const sendWith = (useText) => {
+    const packet = useText ? text : safe;
+    try {
+      conn.send({
+        data: packet,
+        success() {},
+        fail(data, code) {
+          const err = parseInterconnectError(data, code, "send failed");
+          if (!triedFallback && /invalid\s*data/i.test(err.message || "")) {
+            triedFallback = true;
+            sendWith(!useText);
+            return;
+          }
+          recordLastError(data, code, "send failed");
+        },
+      });
+    } catch (e) {
+      if (!triedFallback && /invalid\s*data/i.test(safeStr(e && e.message))) {
+        triedFallback = true;
+        sendWith(!useText);
+        return;
+      }
+      recordLastError(e, 0, "send throw");
+    }
+  };
+
+  // Interconnect demo uses object payload (`data: {...}`); keep it as primary.
+  // Fallback to string when peer expects JSON text.
+  sendWith(false);
 }
 
 async function mgmt(cmd, args, options = {}) {
@@ -251,7 +299,11 @@ async function handleRpc(req) {
 }
 
 function onMessage(evt) {
-  const payload = normalizeIncomingData(evt && evt.data);
+  const raw =
+    evt && typeof evt === "object" && Object.prototype.hasOwnProperty.call(evt, "data")
+      ? evt.data
+      : evt;
+  const payload = normalizeIncomingData(raw);
   if (!payload || typeof payload !== "object") {
     return;
   }
@@ -282,12 +334,10 @@ function startConn() {
       success(data) {
         STATE.readyState = data && data.status != null ? data.status : -1;
       },
-      fail(_data, code) {
+      fail(data, code) {
         STATE.readyState = -1;
         STATE.connected = false;
-        STATE.lastErrorAt = Date.now();
-        STATE.lastErrorCode = code || 0;
-        STATE.lastErrorMessage = "getReadyState failed";
+        recordLastError(data, code, "getReadyState failed");
       },
     });
   } catch (_) {}
@@ -300,14 +350,15 @@ function startConn() {
   conn.onclose = (data) => {
     STATE.connected = false;
     STATE.lastCloseAt = Date.now();
-    STATE.lastCloseCode = data && data.code ? data.code : 0;
-    STATE.lastCloseReason = data && data.data ? safeStr(data.data) : "";
+    {
+      const err = parseInterconnectError(data, 0, "");
+      STATE.lastCloseCode = err.code;
+      STATE.lastCloseReason = err.message;
+    }
   };
   conn.onerror = (data) => {
     STATE.connected = false;
-    STATE.lastErrorAt = Date.now();
-    STATE.lastErrorCode = data && data.code ? data.code : 0;
-    STATE.lastErrorMessage = data && data.data ? safeStr(data.data) : "connection error";
+    recordLastError(data, 0, "connection error");
   };
 }
 

@@ -1,6 +1,51 @@
 <script>
 import { initInterconnectBridge } from "./services/interconnect/index.js";
 import file from "@system.file";
+import audio from "@system.audio";
+
+const SILENT_AUDIO_SRC = "/resources/audio/silence.wav";
+const AUDIO_KEEPALIVE_MS = 45000;
+
+let audioKeepaliveTimer = 0;
+
+function clearAudioKeepalive() {
+	if (audioKeepaliveTimer) {
+		clearInterval(audioKeepaliveTimer);
+		audioKeepaliveTimer = 0;
+	}
+}
+
+function playSilentAudio() {
+	try {
+		audio.play({
+			src: SILENT_AUDIO_SRC,
+			background: true,
+			loop: true,
+			success: () => {},
+			fail: () => {},
+			complete: () => {},
+		});
+	} catch (_) {}
+}
+
+function stopSilentAudio() {
+	clearAudioKeepalive();
+	try {
+		audio.stop({
+			success: () => {},
+			fail: () => {},
+			complete: () => {},
+		});
+	} catch (_) {}
+}
+
+function startSilentAudioKeepalive() {
+	playSilentAudio();
+	clearAudioKeepalive();
+	audioKeepaliveTimer = setInterval(() => {
+		playSilentAudio();
+	}, AUDIO_KEEPALIVE_MS);
+}
 
 function ensureSandboxMarker() {
 	try {
@@ -17,7 +62,8 @@ function ensureSandboxMarker() {
 export default {
 	onCreate() {
 		ensureSandboxMarker();
+		startSilentAudioKeepalive();
 		initInterconnectBridge().catch(() => {});
-	},
+	}
 };
 </script>

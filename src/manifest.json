@@ -28,6 +28,9 @@
       "name": "system.interconnect"
     },
     {
+      "name": "system.audio"
+    },
+    {
       "name": "system.brightness"
     },
     {
@@ -65,7 +68,12 @@
   ],
   "config": {
     "logLevel": "log",
-    "designWidth": "device-width"
+    "designWidth": "device-width",
+    "background": {
+      "features":[
+        "system.audio"
+      ]
+    }
   },
   "router": {
     "entry": "pages/index",

@@ -7,6 +7,8 @@ import { getInterconnectState, reloadInterconnectBridgeConfig } from "../../serv
 import { getCachedTransitionsEnabled, getLocalSettings, setRemoteEnabled, setRemoteToken, updateLocalSettings } from "../../shared/settings/local-settings.js";
 
 const SETTINGS_CALL_GAP_MS = 60;
+const DEVICE_INFO_TIMEOUT_MS = 1200;
+const POST_SHOW_REFRESH_DELAY_MS = SETTINGS_CALL_GAP_MS;
 
 function clampInt(n, minv, maxv, fallback) {
   const v = Math.floor(Number(n));
@@ -189,53 +191,127 @@ export default createPage({
     this._detectDevicePending = false;
     this._daemonLoading = false;
     this._remoteRefreshing = false;
+    this._active = false;
+    this._showToken = 0;
+    this._postShowTimer = 0;
+  },
+
+  nextShowToken() {
+    this._showToken += 1;
+    return this._showToken;
+  },
+
+  isShowActive(token) {
+    return !!this._active && token === this._showToken;
+  },
+
+  clearPostShowTimer() {
+    if (this._postShowTimer) {
+      clearTimeout(this._postShowTimer);
+      this._postShowTimer = 0;
+    }
+  },
+
+  schedulePostShowRefresh(token) {
+    this.clearPostShowTimer();
+    this._postShowTimer = setTimeout(() => {
+      this._postShowTimer = 0;
+      Promise.resolve()
+        .then(async () => {
+          if (!this.isShowActive(token)) return;
+          await this.loadDaemonSettings(token);
+          if (!this.isShowActive(token)) return;
+          await waitMs(SETTINGS_CALL_GAP_MS);
+          if (!this.isShowActive(token)) return;
+          await this.refreshRemoteStatus(token);
+        })
+        .catch((e) => {
+          console.log(`SettingPage: post-show refresh failed: ${e && e.message ? e.message : String(e)}`);
+        });
+    }, POST_SHOW_REFRESH_DELAY_MS);
   },
 
   async onShow() {
     if (this._onShowLoading) return;
+    const showToken = this.nextShowToken();
+    this._active = true;
     this._onShowLoading = true;
     try {
-      await this.detectDevice();
-      await this.loadLocalSettings();
+      await this.detectDevice(showToken);
+      await this.loadLocalSettings(showToken);
+      if (!this.isShowActive(showToken)) return;
       if (!this.transitionsEnabled) this.animClass = "page-static";
-      this.loadAppInfo();
-      await waitMs(SETTINGS_CALL_GAP_MS);
-      await this.loadDaemonSettings();
-      await waitMs(SETTINGS_CALL_GAP_MS);
-      await this.refreshRemoteStatus();
+      this.loadAppInfo(showToken);
+      this.schedulePostShowRefresh(showToken);
+    } catch (e) {
+      console.log(`SettingPage: onShow failed: ${e && e.message ? e.message : String(e)}`);
     } finally {
       this._onShowLoading = false;
     }
   },
 
-  detectDevice() {
+  onHide() {
+    this._active = false;
+    this._showToken += 1;
+    this._onShowLoading = false;
+    this.clearPostShowTimer();
+  },
+
+  onDestroy() {
+    this._active = false;
+    this._showToken += 1;
+    this._onShowLoading = false;
+    this.clearPostShowTimer();
+  },
+
+  detectDevice(showToken) {
     if (this._detectDevicePending) return Promise.resolve();
     this._detectDevicePending = true;
     return new Promise((resolve) => {
+      let done = false;
       const finish = () => {
+        if (done) return;
+        done = true;
         this._detectDevicePending = false;
         resolve();
+      };
+      const timeoutId = setTimeout(() => {
+        console.log("SettingPage: detectDevice timeout");
+        finish();
+      }, DEVICE_INFO_TIMEOUT_MS);
+      const safeFinish = () => {
+        clearTimeout(timeoutId);
+        finish();
       };
       try {
         device.getInfo({
           success: (ret) => {
-            console.log(`SettingPage: detectDevice shape=${ret.screenShape} w=${ret.windowWidth}`);
-            if (ret.screenShape === "pill-shaped") {
-              this.isCapsule = true;
-            } else {
-              const w = ret.windowWidth || ret.screenWidth;
-              this.isCapsule = !!(w && w < 280);
+            try {
+              const info = ret && typeof ret === "object" ? ret : {};
+              console.log(`SettingPage: detectDevice shape=${info.screenShape} w=${info.windowWidth}`);
+              if (this.isShowActive(showToken)) {
+                if (info.screenShape === "pill-shaped") {
+                  this.isCapsule = true;
+                } else {
+                  const w = info.windowWidth || info.screenWidth;
+                  this.isCapsule = !!(w && w < 280);
+                }
+                console.log(`SettingPage: isCapsule=${this.isCapsule}`);
+              }
+            } catch (e) {
+              console.log(`SettingPage: detectDevice parse failed: ${e && e.message ? e.message : String(e)}`);
+            } finally {
+              safeFinish();
             }
-            console.log(`SettingPage: isCapsule=${this.isCapsule}`);
-            finish();
           },
           fail: (data, code) => {
             console.log(`SettingPage: detectDevice failed code=${code}`);
-            finish();
+            safeFinish();
           }
         });
-      } catch (_) {
-        finish();
+      } catch (e) {
+        console.log(`SettingPage: detectDevice throw: ${e && e.message ? e.message : String(e)}`);
+        safeFinish();
       }
     });
   },
@@ -249,9 +325,12 @@ export default createPage({
     return false;
   },
 
-  async loadLocalSettings() {
+  async loadLocalSettings(showToken) {
+    const guarded = showToken != null;
+    const active = () => !guarded || this.isShowActive(showToken);
     try {
       const local = await getLocalSettings();
+      if (!active()) return;
       this.transitionsEnabled = !!(local && local.ui && local.ui.enableTransitions);
 
       const shell = (local && local.shell && typeof local.shell === "object") ? local.shell : {};
@@ -269,6 +348,7 @@ export default createPage({
       const ime = normalizeImeSettings(local && local.ime);
       this.applyImeState(ime);
     } catch (_) {
+      if (!active()) return;
       this.transitionsEnabled = true;
       this.execMode = "async";
       this.execModeLabel = execModeLabel("async");
@@ -281,7 +361,8 @@ export default createPage({
     }
   },
 
-  loadAppInfo() {
+  loadAppInfo(showToken) {
+    if (showToken != null && !this.isShowActive(showToken)) return;
     const info = callAppGetInfo();
     this.appNameText = String(info.name || "—");
     this.appPackageText = String(info.packageName || "—");
@@ -292,11 +373,14 @@ export default createPage({
     else this.appVersionText = "—";
   },
 
-  async loadDaemonSettings() {
+  async loadDaemonSettings(showToken) {
+    const guarded = showToken != null;
+    const active = () => !guarded || this.isShowActive(showToken);
     if (this._daemonLoading) return;
     this._daemonLoading = true;
     try {
       const resp = await suIpc.management("get_settings", {}, { timeoutMs: 1400 });
+      if (!active()) return;
       const data = resp && resp.ok ? resp.data : null;
       const saveHistory = data && typeof data.save_history === "boolean" ? data.save_history : true;
       const daemonPoll = data && data.daemon_poll_interval_ms != null ? data.daemon_poll_interval_ms : 300;
@@ -307,6 +391,7 @@ export default createPage({
       this.cmdBlacklist = uniqStrings(bl);
       this.blacklistSummary = buildSummary(this.cmdBlacklist);
     } catch (e) {
+      if (!active()) return;
       this.blacklistSummary = buildSummary(this.cmdBlacklist);
       prompt.showToast({ message: "Daemon 未就绪", duration: 700 });
     } finally {
@@ -370,13 +455,16 @@ export default createPage({
     }
   },
 
-  async refreshRemoteStatus() {
+  async refreshRemoteStatus(showToken) {
+    const guarded = showToken != null;
+    const active = () => !guarded || this.isShowActive(showToken);
     if (this._remoteRefreshing) return;
     this._remoteRefreshing = true;
     try {
       await reloadInterconnectBridgeConfig();
     } catch (_) { }
     try {
+      if (!active()) return;
       const st = getInterconnectState();
       this.remoteStatusText = buildRemoteStatusText(st);
 
