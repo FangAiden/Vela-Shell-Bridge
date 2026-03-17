@@ -1,167 +1,187 @@
 <template>
-  <div class="root" show="{{ showFlag !== false }}">
-    <text class="time" style="margin-top: {{ topOffset }}px; font-size: {{ fontSize }}px;">{{ time }}</text>
-  </div>
+	<div
+		class="root"
+		show="{{ showFlag !== false }}"
+		onclick="handleClick(index)"
+	>
+		<text
+			class="time"
+			style="margin-top: {{ topOffset }}px; font-size: {{ fontSize }}px;"
+		>
+			{{ time }}
+		</text>
+	</div>
 </template>
 
 <script>
 import device from "@system.device";
+import app from "@system.app";
 import { getScaleByBucket } from "../../shared/ui/layout-scale.js";
 import { pickNearestBucket } from "../../shared/ui/screen-profile.js";
 
 export default {
-  props: {
-    showFlag: {
-      default: true,
-    },
-    mode: {
-      default: "circle",
-    },
-    bucket: {
-      default: "",
-    },
-  },
-  data: {
-    time: "",
-    topOffset: 14,
-    fontSize: 30,
-    autoBucket: "",
-  },
+	props: {
+		showFlag: {
+			default: true,
+		},
+		mode: {
+			default: "circle",
+		},
+		bucket: {
+			default: "",
+		},
+		index: {
+			default: false,
+		},
+	},
+	data: {
+		time: "",
+		topOffset: 14,
+		fontSize: 30,
+		autoBucket: "",
+	},
 
-  onInit() {
-    this.applyLayout();
-    this.syncAutoBucket();
-    this.updateTime();
-    this.scheduleNextTick();
-    this.$on("page-on-show", this.handleParentShow);
-    this.$watch("mode", "handleLayoutInputChange");
-    this.$watch("bucket", "handleLayoutInputChange");
-  },
+	onInit() {
+		this.applyLayout();
+		this.syncAutoBucket();
+		this.updateTime();
+		this.scheduleNextTick();
+		this.$on("page-on-show", this.handleParentShow);
+		this.$watch("mode", "handleLayoutInputChange");
+		this.$watch("bucket", "handleLayoutInputChange");
+	},
 
-  onDestroy() {
-    if (this._minuteTimer) {
-      clearTimeout(this._minuteTimer);
-      this._minuteTimer = null;
-    }
-    this.$off("page-on-show", this.handleParentShow);
-  },
+	onDestroy() {
+		if (this._minuteTimer) {
+			clearTimeout(this._minuteTimer);
+			this._minuteTimer = null;
+		}
+		this.$off("page-on-show", this.handleParentShow);
+	},
 
-  normalizeMode(v) {
-    const m = String(v == null ? "" : v).toLowerCase();
-    if (m === "pill-shaped" || m === "pill" || m === "capsule") return "pill-shaped";
-    if (m === "rect" || m === "rectangle") return "rect";
-    return "circle";
-  },
+	normalizeMode(v) {
+		const m = String(v == null ? "" : v).toLowerCase();
+		if (m === "pill-shaped" || m === "pill" || m === "capsule")
+			return "pill-shaped";
+		if (m === "rect" || m === "rectangle") return "rect";
+		return "circle";
+	},
 
-  handleLayoutInputChange() {
-    this.applyLayout();
-    this.syncAutoBucket();
-  },
+	handleLayoutInputChange() {
+		this.applyLayout();
+		this.syncAutoBucket();
+	},
 
-  defaultBucketByMode(mode) {
-    if (mode === "rect") return "r390";
-    if (mode === "pill-shaped") return "p212";
-    return "c480";
-  },
+	defaultBucketByMode(mode) {
+		if (mode === "rect") return "r390";
+		if (mode === "pill-shaped") return "p212";
+		return "c480";
+	},
 
-  resolveBucket(mode) {
-    const explicit = String(this.bucket == null ? "" : this.bucket).trim();
-    if (explicit) return explicit;
-    const auto = String(this.autoBucket == null ? "" : this.autoBucket).trim();
-    if (auto) return auto;
-    return this.defaultBucketByMode(mode);
-  },
+	resolveBucket(mode) {
+		const explicit = String(this.bucket == null ? "" : this.bucket).trim();
+		if (explicit) return explicit;
+		const auto = String(this.autoBucket == null ? "" : this.autoBucket).trim();
+		if (auto) return auto;
+		return this.defaultBucketByMode(mode);
+	},
 
-  syncAutoBucket() {
-    const explicit = String(this.bucket == null ? "" : this.bucket).trim();
-    if (explicit) return;
-    if (this._loadingAutoBucket) return;
-    this._loadingAutoBucket = true;
+	syncAutoBucket() {
+		const explicit = String(this.bucket == null ? "" : this.bucket).trim();
+		if (explicit) return;
+		if (this._loadingAutoBucket) return;
+		this._loadingAutoBucket = true;
 
-    device.getInfo({
-      success: (ret) => {
-        this._loadingAutoBucket = false;
-        const info = ret && typeof ret === "object" ? ret : {};
-        const mode = this.normalizeMode(this.mode);
-        const width = Number(info.windowWidth || info.screenWidth || 0);
-        const height = Number(info.windowHeight || info.screenHeight || 0);
-        const bucket = pickNearestBucket(mode, width, height);
-        if (bucket && bucket !== this.autoBucket) {
-          this.autoBucket = bucket;
-          this.applyLayout();
-        }
-      },
-      fail: () => {
-        this._loadingAutoBucket = false;
-      },
-    });
-  },
+		device.getInfo({
+			success: (ret) => {
+				this._loadingAutoBucket = false;
+				const info = ret && typeof ret === "object" ? ret : {};
+				const mode = this.normalizeMode(this.mode);
+				const width = Number(info.windowWidth || info.screenWidth || 0);
+				const height = Number(info.windowHeight || info.screenHeight || 0);
+				const bucket = pickNearestBucket(mode, width, height);
+				if (bucket && bucket !== this.autoBucket) {
+					this.autoBucket = bucket;
+					this.applyLayout();
+				}
+			},
+			fail: () => {
+				this._loadingAutoBucket = false;
+			},
+		});
+	},
 
-  applyLayout() {
-    const mode = this.normalizeMode(this.mode);
-    const bucketKey = this.resolveBucket(mode);
-    const scale = getScaleByBucket(bucketKey);
+	applyLayout() {
+		const mode = this.normalizeMode(this.mode);
+		const bucketKey = this.resolveBucket(mode);
+		const scale = getScaleByBucket(bucketKey);
 
-    let baseTop = 14;
-    let baseFont = 30;
-    if (mode === "rect") {
-      baseTop = 10;
-      baseFont = 28;
-    } else if (mode === "pill-shaped") {
-      baseTop = 8;
-      baseFont = 22;
-    }
+		let baseTop = 14;
+		let baseFont = 30;
+		if (mode === "rect") {
+			baseTop = 10;
+			baseFont = 28;
+		} else if (mode === "pill-shaped") {
+			baseTop = 8;
+			baseFont = 22;
+		}
 
-    this.topOffset = Math.max(4, Math.round(baseTop * scale));
-    this.fontSize = Math.max(14, Math.round(baseFont * scale));
-  },
+		this.topOffset = Math.max(4, Math.round(baseTop * scale));
+		this.fontSize = Math.max(14, Math.round(baseFont * scale));
+	},
 
-  handleParentShow() {
-    this.applyLayout();
-    this.syncAutoBucket();
-    this.updateTime();
-    this.scheduleNextTick();
-  },
+	handleParentShow() {
+		this.applyLayout();
+		this.syncAutoBucket();
+		this.updateTime();
+		this.scheduleNextTick();
+	},
 
-  scheduleNextTick() {
-    if (this._minuteTimer) {
-      clearTimeout(this._minuteTimer);
-      this._minuteTimer = null;
-    }
+	scheduleNextTick() {
+		if (this._minuteTimer) {
+			clearTimeout(this._minuteTimer);
+			this._minuteTimer = null;
+		}
 
-    const now = new Date();
-    const passedMs = now.getSeconds() * 1000 + now.getMilliseconds();
-    let delay = 60 * 1000 - passedMs;
-    if (delay <= 0 || delay > 60 * 1000) {
-      delay = 60 * 1000;
-    }
+		const now = new Date();
+		const passedMs = now.getSeconds() * 1000 + now.getMilliseconds();
+		let delay = 60 * 1000 - passedMs;
+		if (delay <= 0 || delay > 60 * 1000) {
+			delay = 60 * 1000;
+		}
 
-    this._minuteTimer = setTimeout(() => {
-      this.updateTime();
-      this.scheduleNextTick();
-    }, delay);
-  },
+		this._minuteTimer = setTimeout(() => {
+			this.updateTime();
+			this.scheduleNextTick();
+		}, delay);
+	},
 
-  updateTime() {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    this.time = `${hh}:${mm}`;
-  },
+	updateTime() {
+		const now = new Date();
+		const hh = String(now.getHours()).padStart(2, "0");
+		const mm = String(now.getMinutes()).padStart(2, "0");
+		this.time = `${hh}:${mm}`;
+	},
+
+	handleClick(index) {
+		if (index) {
+			app.terminate();
+		}
+	},
 };
 </script>
 
 <style>
 .root {
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  background-color: transparent;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	width: 100%;
+	background-color: transparent;
 }
 
 .time {
-  font-weight: bold;
-  color: #f1f1f1;
+	font-weight: bold;
+	color: #f1f1f1;
 }
 </style>

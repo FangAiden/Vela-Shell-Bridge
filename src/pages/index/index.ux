@@ -2,66 +2,72 @@
 <import name="time-bar" src="../../ui/components/timeBar"></import>
 
 <template>
-  <div class="root">
-    <stack class="stack">
-      <stack class="page-body page-static {{ animClass }}">
-        <div class="preload-layer" if="{{ preloadVisible }}">
-          <image
-            class="preload-image"
-            for="{{ preloadBgList }}"
-            tid="id"
-            src="{{ $item.src }}"
-          />
-          <image
-            class="preload-image"
-            for="{{ preloadCardList }}"
-            tid="id"
-            src="{{ $item.src }}"
-          />
-        </div>
+	<div class="root">
+		<stack class="stack">
+			<stack class="page-body page-static {{ animClass }}">
+				<div class="preload-layer" if="{{ preloadVisible }}">
+					<image
+						class="preload-image"
+						for="{{ preloadBgList }}"
+						tid="id"
+						src="{{ $item.src }}"
+					/>
+					<image
+						class="preload-image"
+						for="{{ preloadCardList }}"
+						tid="id"
+						src="{{ $item.src }}"
+					/>
+				</div>
 
-        <image
-          class="background"
-          for="{{ bgList }}"
-          tid="id"
-          src="{{ $item.src }}"
-          style="opacity: {{ bgOpacity[$idx] }}; width: {{ bgWidthPx }}px; height: {{ bgHeightPx }}px; object-fit: cover"
-        />
+				<image
+					class="background"
+					for="{{ bgList }}"
+					tid="id"
+					src="{{ $item.src }}"
+					style="opacity: {{ bgOpacity[$idx] }}; width: {{ bgWidthPx }}px; height: {{ bgHeightPx }}px; object-fit: cover"
+				/>
 
-        <scroll
-          id="funcScroll"
-          class="box {{ screenShape === 'pill-shaped' ? 'box-pill' : (screenShape === 'rect' ? 'box-rect' : 'box-circle') }}"
-          scroll-x="{{ false }}"
-          scroll-y="{{ false }}"
-          bounces="true"
-          onscroll="onScroll"
-        >
-          <div
-            for="{{ cards }}"
-            tid="id"
-            class="{{ screenShape === 'pill-shaped' ? 'card-pill' : (screenShape === 'rect' ? 'card-rect' : 'card-circle') }} {{ screenBucket === 'p192' ? 'card-pill-p192' : '' }}"
-            onclick="onClickCard($item.id)"
-          >
-            <icon-text
-              title="{{ $item.title }}"
-              subtitle="{{ $item.subtitle }}"
-              image="{{ $item.image }}"
-              mode="{{ screenShape }}"
-              bucket="{{ screenBucket }}"
-            />
-          </div>
-        </scroll>
+				<scroll
+					id="funcScroll"
+					class="box {{ screenShape === 'pill-shaped' ? 'box-pill' : (screenShape === 'rect' ?
+'box-rect' : 'box-circle') }}"
+					scroll-x="{{ false }}"
+					scroll-y="{{ false }}"
+					bounces="true"
+					onscroll="onScroll"
+				>
+					<div
+						for="{{ cards }}"
+						tid="id"
+						class="{{ screenShape === 'pill-shaped' ? 'card-pill' : (screenShape === 'rect' ?
+'card-rect' : 'card-circle') }} {{ screenBucket === 'p192' ? 'card-pill-p192' : '' }}"
+						onclick="onClickCard($item.id)"
+					>
+						<icon-text
+							title="{{ $item.title }}"
+							subtitle="{{ $item.subtitle }}"
+							image="{{ $item.image }}"
+							mode="{{ screenShape }}"
+							bucket="{{ screenBucket }}"
+						/>
+					</div>
+				</scroll>
 
-        <div
-          class="gesture-layer"
-          onswipe="onSwipe"
-          onclick="onGestureTap"
-        ></div>
-      </stack>
+				<div
+					class="gesture-layer"
+					onswipe="onSwipe"
+					onclick="onGestureTap"
+				></div>
+			</stack>
 
-      <time-bar mode="{{ screenShape }}" bucket="{{ screenBucket }}" />
-    </stack>
-  </div>
+			<time-bar
+				mode="{{ screenShape }}"
+				bucket="{{ screenBucket }}"
+				index="{{ true }}"
+			/>
+		</stack>
+	</div>
 </template>
 
 <script>
@@ -71,126 +77,130 @@ export default page;
 </script>
 
 <style>
+.root {
+	background-color: #000;
+}
+
 .root,
 .stack,
 .box {
-  width: 100%;
-  height: 100%;
+	width: 100%;
+	height: 100%;
 }
 
 .stack {
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
+	flex-direction: column;
+	justify-content: flex-start;
+	align-items: center;
 }
 
 .box-pill {
-  flex-direction: column;
-  padding-top: 60px;
-  padding-bottom: 60px;
-  align-items: center;
+	flex-direction: column;
+	padding-top: 60px;
+	padding-bottom: 60px;
+	align-items: center;
 }
 
 .box-circle,
 .box-rect {
-  flex-direction: row;
+	flex-direction: row;
 }
 
 .card-pill {
-  width: 180px;
-  height: 380px;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 40px;
-  border-radius: 30px;
+	width: 180px;
+	height: 380px;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	margin-bottom: 40px;
+	border-radius: 30px;
 }
 
 .card-pill-p192 {
-  width: 168px;
-  height: 340px;
-  margin-bottom: 30px;
+	width: 168px;
+	height: 340px;
+	margin-bottom: 30px;
 }
 
 .card-circle,
 .card-rect {
-  width: 100%;
-  height: 100%;
+	width: 100%;
+	height: 100%;
 }
 
 .page-body {
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  transform: scale(0.8);
-  transform-origin: center center;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: stretch;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	transform: scale(0.8);
+	transform-origin: center center;
+	flex-direction: column;
+	justify-content: flex-start;
+	align-items: stretch;
 }
 
 .page-static {
-  opacity: 1;
-  transform: scale(1);
+	opacity: 1;
+	transform: scale(1);
 }
 .page-enter {
-  animation-name: pageFadeIn;
-  animation-duration: 140ms;
-  animation-timing-function: ease-out;
-  animation-iteration-count: 1;
-  transform: scale(1);
+	animation-name: pageFadeIn;
+	animation-duration: 140ms;
+	animation-timing-function: ease-out;
+	animation-iteration-count: 1;
+	transform: scale(1);
 }
 .page-leave {
-  animation-name: pageFadeOut;
-  animation-duration: 120ms;
-  animation-timing-function: ease-in;
-  animation-iteration-count: 1;
-  transform: scale(1);
+	animation-name: pageFadeOut;
+	animation-duration: 120ms;
+	animation-timing-function: ease-in;
+	animation-iteration-count: 1;
+	transform: scale(1);
 }
 .background {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  left: 0px;
-  top: 0px;
+	width: 100%;
+	height: 100%;
+	position: absolute;
+	left: 0px;
+	top: 0px;
 }
 
 .gesture-layer {
-  position: absolute;
-  left: 0px;
-  top: 0px;
-  width: 100%;
-  height: 100%;
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	width: 100%;
+	height: 100%;
 }
 
 .preload-layer {
-  position: absolute;
-  left: -2000px;
-  top: -2000px;
-  width: 2px;
-  height: 2px;
-  opacity: 0;
+	position: absolute;
+	left: -2000px;
+	top: -2000px;
+	width: 2px;
+	height: 2px;
+	opacity: 0;
 }
 
 .preload-image {
-  width: 2px;
-  height: 2px;
+	width: 2px;
+	height: 2px;
 }
 
 @keyframes pageFadeIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
+	0% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
 }
 @keyframes pageFadeOut {
-  0% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
+	0% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
 }
 </style>
