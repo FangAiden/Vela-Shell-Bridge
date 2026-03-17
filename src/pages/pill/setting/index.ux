@@ -80,7 +80,7 @@
           </div>
         </div>
 
-        <div class="section">
+        <div class="section" if="{{ showDeferredSections }}">
           <text class="section-title">手机互联</text>
 
           <div class="card" onclick="onToggleRemote">
@@ -110,7 +110,7 @@
           </div>
         </div>
 
-        <div class="section">
+        <div class="section" if="{{ showDeferredSections }}">
           <text class="section-title">输入法</text>
 
           <div class="card" onclick="toggleImeKeyboard">
@@ -160,7 +160,7 @@
           </div>
         </div>
 
-        <div class="section">
+        <div class="section" if="{{ showDeferredSections }}">
           <text class="section-title">关于应用</text>
 
           <div class="info-card">
@@ -193,7 +193,7 @@
       </scroll>
 
         <!-- 黑名单弹窗 -->
-        <div class="modal-mask" show="{{ showBlacklist }}">
+        <div class="modal-mask" if="{{ showBlacklist }}">
           <div class="modal {{ modalAnim }}">
             <text class="modal-title lines-1">黑名单命令</text>
             <text class="modal-sub lines-2">启用后，这些命令会被 Daemon 拒绝执行</text>

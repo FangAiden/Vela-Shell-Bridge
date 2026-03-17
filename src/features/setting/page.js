@@ -8,7 +8,7 @@ import { getCachedTransitionsEnabled, getLocalSettings, setRemoteEnabled, setRem
 
 const SETTINGS_CALL_GAP_MS = 60;
 const DEVICE_INFO_TIMEOUT_MS = 1200;
-const POST_SHOW_REFRESH_DELAY_MS = SETTINGS_CALL_GAP_MS;
+const POST_SHOW_REFRESH_DELAY_MS = 180;
 
 function clampInt(n, minv, maxv, fallback) {
   const v = Math.floor(Number(n));
@@ -141,6 +141,8 @@ function imeScreenLabel(type) {
 
 export default createPage({
   data: {
+    showDeferredSections: false,
+
     // local settings
     transitionsEnabled: getCachedTransitionsEnabled(),
     isCapsule: false,
@@ -189,7 +191,10 @@ export default createPage({
   onInit() {
     this._onShowLoading = false;
     this._detectDevicePending = false;
+    this._detectDeviceDone = false;
     this._daemonLoading = false;
+    this._daemonLoadedOnce = false;
+    this._appInfoLoadedOnce = false;
     this._remoteRefreshing = false;
     this._active = false;
     this._showToken = 0;
@@ -219,11 +224,19 @@ export default createPage({
       Promise.resolve()
         .then(async () => {
           if (!this.isShowActive(token)) return;
-          await this.loadDaemonSettings(token);
+          if (!this._daemonLoadedOnce) {
+            await this.loadDaemonSettings(token, { silent: true });
+          }
+          if (!this.isShowActive(token)) return;
+          this.showDeferredSections = true;
+          if (!this._appInfoLoadedOnce) {
+            this.loadAppInfo(token);
+          }
+          if (!this.isShowActive(token)) return;
+          this.applyCachedRemoteStatus(token);
           if (!this.isShowActive(token)) return;
           await waitMs(SETTINGS_CALL_GAP_MS);
           if (!this.isShowActive(token)) return;
-          await this.refreshRemoteStatus(token);
         })
         .catch((e) => {
           console.log(`SettingPage: post-show refresh failed: ${e && e.message ? e.message : String(e)}`);
@@ -236,12 +249,13 @@ export default createPage({
     const showToken = this.nextShowToken();
     this._active = true;
     this._onShowLoading = true;
+    this.showDeferredSections = false;
     try {
       await this.detectDevice(showToken);
       await this.loadLocalSettings(showToken);
       if (!this.isShowActive(showToken)) return;
       if (!this.transitionsEnabled) this.animClass = "page-static";
-      this.loadAppInfo(showToken);
+      this.applyCachedRemoteStatus(showToken);
       this.schedulePostShowRefresh(showToken);
     } catch (e) {
       console.log(`SettingPage: onShow failed: ${e && e.message ? e.message : String(e)}`);
@@ -254,6 +268,7 @@ export default createPage({
     this._active = false;
     this._showToken += 1;
     this._onShowLoading = false;
+    this.showDeferredSections = false;
     this.clearPostShowTimer();
   },
 
@@ -261,10 +276,13 @@ export default createPage({
     this._active = false;
     this._showToken += 1;
     this._onShowLoading = false;
+    this.showDeferredSections = false;
     this.clearPostShowTimer();
   },
 
   detectDevice(showToken) {
+    const token = typeof showToken === "number" ? showToken : null;
+    if (this._detectDeviceDone) return Promise.resolve();
     if (this._detectDevicePending) return Promise.resolve();
     this._detectDevicePending = true;
     return new Promise((resolve) => {
@@ -289,7 +307,7 @@ export default createPage({
             try {
               const info = ret && typeof ret === "object" ? ret : {};
               console.log(`SettingPage: detectDevice shape=${info.screenShape} w=${info.windowWidth}`);
-              if (this.isShowActive(showToken)) {
+              if (token == null || this.isShowActive(token)) {
                 if (info.screenShape === "pill-shaped") {
                   this.isCapsule = true;
                 } else {
@@ -297,6 +315,7 @@ export default createPage({
                   this.isCapsule = !!(w && w < 280);
                 }
                 console.log(`SettingPage: isCapsule=${this.isCapsule}`);
+                this._detectDeviceDone = true;
               }
             } catch (e) {
               console.log(`SettingPage: detectDevice parse failed: ${e && e.message ? e.message : String(e)}`);
@@ -326,8 +345,9 @@ export default createPage({
   },
 
   async loadLocalSettings(showToken) {
-    const guarded = showToken != null;
-    const active = () => !guarded || this.isShowActive(showToken);
+    const token = typeof showToken === "number" ? showToken : null;
+    const guarded = token != null;
+    const active = () => !guarded || this.isShowActive(token);
     try {
       const local = await getLocalSettings();
       if (!active()) return;
@@ -362,7 +382,8 @@ export default createPage({
   },
 
   loadAppInfo(showToken) {
-    if (showToken != null && !this.isShowActive(showToken)) return;
+    const token = typeof showToken === "number" ? showToken : null;
+    if (token != null && !this.isShowActive(token)) return;
     const info = callAppGetInfo();
     this.appNameText = String(info.name || "—");
     this.appPackageText = String(info.packageName || "—");
@@ -371,11 +392,14 @@ export default createPage({
     if (vn && vc) this.appVersionText = `${vn} (${vc})`;
     else if (vn) this.appVersionText = String(vn);
     else this.appVersionText = "—";
+    this._appInfoLoadedOnce = true;
   },
 
-  async loadDaemonSettings(showToken) {
-    const guarded = showToken != null;
-    const active = () => !guarded || this.isShowActive(showToken);
+  async loadDaemonSettings(showToken, options = {}) {
+    const token = typeof showToken === "number" ? showToken : null;
+    const guarded = token != null;
+    const active = () => !guarded || this.isShowActive(token);
+    const silent = !!(options && options.silent);
     if (this._daemonLoading) return;
     this._daemonLoading = true;
     try {
@@ -390,12 +414,31 @@ export default createPage({
       this.daemonPollMs = clampInt(daemonPoll, 50, 2000, 300);
       this.cmdBlacklist = uniqStrings(bl);
       this.blacklistSummary = buildSummary(this.cmdBlacklist);
+      this._daemonLoadedOnce = true;
     } catch (e) {
       if (!active()) return;
       this.blacklistSummary = buildSummary(this.cmdBlacklist);
-      prompt.showToast({ message: "Daemon 未就绪", duration: 700 });
+      if (!silent) {
+        prompt.showToast({ message: "Daemon 未就绪", duration: 700 });
+      }
     } finally {
       this._daemonLoading = false;
+    }
+  },
+
+  applyCachedRemoteStatus(showToken) {
+    const token = typeof showToken === "number" ? showToken : null;
+    const guarded = token != null;
+    const active = () => !guarded || this.isShowActive(token);
+    if (!active()) return;
+    const st = getInterconnectState();
+    this.remoteStatusText = buildRemoteStatusText(st);
+    if (this.remoteEnabled) {
+      const nextToken = (st && st.token != null) ? safeStr(st.token).trim() : "";
+      if (nextToken && nextToken !== this.remoteToken) {
+        this.remoteToken = nextToken;
+        this.remoteSummary = buildRemoteSummary(true, nextToken);
+      }
     }
   },
 
@@ -456,8 +499,9 @@ export default createPage({
   },
 
   async refreshRemoteStatus(showToken) {
-    const guarded = showToken != null;
-    const active = () => !guarded || this.isShowActive(showToken);
+    const token = typeof showToken === "number" ? showToken : null;
+    const guarded = token != null;
+    const active = () => !guarded || this.isShowActive(token);
     if (this._remoteRefreshing) return;
     this._remoteRefreshing = true;
     try {
@@ -601,7 +645,10 @@ export default createPage({
     }
   },
 
-  openBlacklist() {
+  async openBlacklist() {
+    if (!this._daemonLoadedOnce && !this._daemonLoading) {
+      await this.loadDaemonSettings(null, { silent: true });
+    }
     this.blacklistDraft = uniqStrings(this.cmdBlacklist);
     this.modalAnim = "modal-enter";
     this.showBlacklist = true;
