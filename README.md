@@ -12,6 +12,178 @@
 - **执行日志** — 记录所有命令执行历史，支持按应用筛选
 - **热重载开发** — Lua 代码修改后无需重启表盘
 
+## 第三方 QuickApp 调用指南
+
+第三方 QuickApp 请直接提取 [`src/services/su-daemon/public.js`](./src/services/su-daemon/public.js) 到自己的项目中使用，例如放到 `src/common/su-ipc-public.js`。
+
+这个公开版客户端只暴露第三方真正可用的能力：
+
+- `suIpc(cmd, options)` / `suIpc.exec(cmd, options)`：执行 Shell
+- `suIpc.poll(jobId)`：查询异步任务状态
+- `suIpc.kill(jobId)`：终止异步任务
+- `DaemonUnavailableError`：daemon 未启动、未扫描到或 IPC 超时时抛出
+
+不会暴露管理接口。第三方 QuickApp 不能直接调用 VelaSU 自身的授权管理、白名单、日志、策略设置等 admin-only API。
+
+### 接入步骤
+
+1. 在第三方 QuickApp 中复制 [`src/services/su-daemon/su-ipc-public.js`](./src/services/su-daemon/su-ipc-public.js)。
+2. 在页面或业务模块中导入它。
+
+```js
+import suIpc from "../common/su-ipc-public.js";
+```
+
+3. 确保手表上已经安装并启动过 VelaSU，一次即可，让 daemon 建立 IPC 工作目录。
+4. 在 VelaSU 的“授权管理”里找到第三方 QuickApp，对该应用执行授权。
+
+### 授权模型
+
+第三方 QuickApp 是否能执行命令，由 VelaSU 的授权策略决定：
+
+- 默认策略是 `ask`
+- `allow`：永久允许
+- `deny`：拒绝
+- `allow_once`：仅允许一次
+- `allow_until_reboot`：本次开机期间允许
+
+如果应用未授权，`exec()` 会返回失败：
+
+- `NEED_PERMISSION`：当前策略是 `ask`
+- `NO_PERMISSION`：当前策略是 `deny`
+- `CMD_BLACKLISTED`：命中了 daemon 黑名单
+
+也就是说，第三方 QuickApp 负责“发请求”，最终是否执行仍由 VelaSU 决定。
+
+### 最小示例
+
+同步执行：
+
+```js
+import suIpc from "../common/su-ipc-public.js";
+
+export default {
+  async onInit() {
+    try {
+      const res = await suIpc("ls", { sync: true, timeoutMs: 8000 });
+      console.log("exit=", res.exitCode);
+      console.log("out=", res.output || "");
+    } catch (e) {
+      console.log("exec failed:", e && e.message ? e.message : e);
+    }
+  }
+};
+```
+
+异步执行并实时接收输出：
+
+```js
+import suIpc from "../common/su-ipc-public.js";
+
+let currentJobId = "";
+
+async function runAsync() {
+  const res = await suIpc.exec("ping 127.0.0.1", {
+    sync: false,
+    timeoutMs: 15000,
+    onStart(jobId) {
+      currentJobId = jobId;
+      console.log("job start:", jobId);
+    },
+    onProgress(output, jobId, pid) {
+      console.log("job progress:", jobId, pid, output || "");
+    }
+  });
+
+  console.log("job done:", res.exitCode, res.output || "");
+}
+
+async function killCurrent() {
+  if (!currentJobId) return;
+  await suIpc.kill(currentJobId);
+}
+```
+
+手动启动异步任务并自行轮询：
+
+```js
+const start = await suIpc.exec("sleep 3 && echo done", {
+  sync: false,
+  wait: false
+});
+
+const jobId = start.jobId;
+
+const st = await suIpc.poll(jobId);
+console.log(st.state, st.output || "");
+```
+
+### 返回值约定
+
+同步执行 `sync: true` 时，返回：
+
+```js
+{
+  id: "...",
+  ok: true,
+  mode: "sync",
+  exitCode: 0,
+  output: "..."
+}
+```
+
+异步执行完成后，返回：
+
+```js
+{
+  id: "...",
+  ok: true,
+  mode: "async",
+  jobId: "...",
+  pid: 123,
+  exitCode: 0,
+  output: "..."
+}
+```
+
+### 错误处理建议
+
+- 捕获 `DaemonUnavailableError`：通常表示 VelaSU daemon 未运行、尚未扫描到该应用，或 IPC 超时。
+- 捕获普通 `Error`：通常是授权拒绝、黑名单拦截、任务状态查询失败等业务错误。
+- 对用户提示时，优先展示 `e.message`。
+
+示例：
+
+```js
+import suIpc, { DaemonUnavailableError } from "../common/su-ipc-public.js";
+
+try {
+  await suIpc("ls", { sync: true });
+} catch (e) {
+  if (e instanceof DaemonUnavailableError) {
+    console.log("VelaSU 未就绪，请先启动 VelaSU");
+  } else {
+    console.log(e && e.message ? e.message : e);
+  }
+}
+```
+
+### 使用限制
+
+- 第三方 QuickApp 只能访问 `public.js` 暴露的 Shell 执行能力，不能调用管理接口。
+- `public.js` 内部会串行发送 IPC 请求；同一时刻只允许一个等待中的执行任务。
+- `internal://files/` 对应的是当前 QuickApp 自己的沙箱目录，不需要手动传入应用 ID。
+- 如果 VelaSU 尚未把该应用加入可扫描范围，daemon 不会处理它的 `ipc_in.json`。
+
+### 推荐排查顺序
+
+如果第三方 QuickApp 调用失败，建议依次检查：
+
+1. VelaSU 是否已经安装并至少启动过一次。
+2. 第三方应用是否已经在 VelaSU 的“授权管理”中授权。
+3. 返回错误是 `NEED_PERMISSION`、`NO_PERMISSION` 还是 `DaemonUnavailableError`。
+4. 命令本身是否命中黑名单，或执行时间是否超过 `timeoutMs`。
+
 ## 架构概览
 
 系统由两部分组成，通过文件 IPC 通信：

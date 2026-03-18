@@ -1,6 +1,5 @@
 /**
  * VelaShellBridge - 第三方 QuickApp 使用的 Shell 执行客户端
- * 单文件版本，无外部依赖
  */
 
 import file from "@system.file";
@@ -10,6 +9,7 @@ import file from "@system.file";
 const BASE = "internal://files/";
 const REQUEST_TIMEOUT = 1500;
 const POLL_INTERVAL = 80;
+const MAX_QUEUE_LENGTH = 50;
 const NOOP = () => {};
 
 export class DaemonUnavailableError extends Error {
@@ -96,6 +96,7 @@ function doSendRequest(payload, options) {
       if (settled) return;
       settled = true;
       if (pollTimer) clearInterval(pollTimer);
+      deleteFile(inUri).catch(NOOP);
       reject(new DaemonUnavailableError(`Timeout ${timeoutMs}ms (id=${id})`));
     }, timeoutMs);
 
@@ -133,6 +134,10 @@ function doSendRequest(payload, options) {
 
 function sendIpcRequest(payload, options = {}) {
   return new Promise((resolve, reject) => {
+    if (requestQueue.length >= MAX_QUEUE_LENGTH) {
+      reject(new DaemonUnavailableError(`Request queue full (max=${MAX_QUEUE_LENGTH})`));
+      return;
+    }
     requestQueue.push({ payload, options, resolve, reject });
     processQueue();
   });
